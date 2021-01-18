@@ -29,8 +29,14 @@
   color: #61dafb;
 }
 
+.spacing-flex-container {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+
 .spacing-flex-container > * {
-  margin: 0 5px;
+  margin: 0 6px;
 }
 
 @keyframes App-logo-spin {

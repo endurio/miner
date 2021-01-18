@@ -1,9 +1,10 @@
 import './App.css';
-import React from 'react'
+import React, { Fragment } from 'react'
 import { Web3ReactProvider, useWeb3React, UnsupportedChainIdError } from '@web3-react/core'
 import { Web3Provider } from '@ethersproject/providers'
 import { useEagerConnect, useInactiveListener } from './hooks'
 import { Spinner } from './components/Spinner'
+import { decShift } from './lib/big'
 import {
   NoEthereumProviderError,
   UserRejectedRequestError as UserRejectedRequestErrorInjected
@@ -48,10 +49,12 @@ function App () {
 function ChainId() {
   const { chainId } = useWeb3React()
 
+  if (!chainId) {
+    return <></>
+  }
+
   return (
-    <>
-      <span>Chain Id: {chainId ?? ''}</span>
-    </>
+    <span>Chain Id: {chainId}</span>
   )
 }
 
@@ -89,15 +92,17 @@ function BlockNumber() {
     }
   }, [library, chainId]) // ensures refresh if referential identity of library doesn't change across chainIds
 
+  if (isNaN(blockNumber)) {
+    return <></>
+  }
+
   return (
-    <>
-      <span>Block Number: {blockNumber === null ? 'Error' : blockNumber ?? ''}</span>
-    </>
+    <span>Block Number: {blockNumber}</span>
   )
 }
 
 function Connection() {
-  const { connector, library, chainId, account, activate, deactivate, active, error } = useWeb3React()
+  const { connector, activate, deactivate, active, error } = useWeb3React()
 
   // handle logic to recognize the connector currently being activated
   const [activatingConnector, setActivatingConnector] = React.useState()
@@ -119,42 +124,86 @@ function Connection() {
   const disabled = !triedEager || !!activatingConnector || connected || !!error
 
   return (
-    <div style={{ display: 'flex' }}>
-      <div>
+    <div style={{ display: 'flex-wrap' }}>
+      <span>
         Status: {active ? '✅' : error ? ('🔴' + getErrorMessage(error)) : '❌'}
-      </div>
-      <div>
-        {!!active ||
-          <button
-            disabled={disabled}
-            key='Injected'
-            onClick={() => {
-              setActivatingConnector(currentConnector)
-              activate(currentConnector)
-            }}
-          >
-            {activating ? <Spinner color={'black'}/> : 'Injected'}
-          </button>
-        }
-      </div>
-
-      <div style={{ display: 'flex', alignItems: 'center' }}>
-        {(active || error) && (
-          <button
-            onClick={() => {
-              deactivate()
-            }}
-          >
-            Deactivate
-          </button>
-        )}
-      </div>
+      </span>
+      {!!active ||
+        <button
+          disabled={disabled}
+          key='Injected'
+          onClick={() => {
+            setActivatingConnector(currentConnector)
+            activate(currentConnector)
+          }}
+        >
+          {activating ? <Spinner color={'black'}/> : 'Injected'}
+        </button>
+      }
+      {(active || error) && (
+        <button
+          onClick={() => {
+            deactivate()
+          }}
+        >
+          Deactivate
+        </button>
+      )}
     </div>
   )
 }
 
+function Account() {
+  const { account } = useWeb3React()
+
+  if (!account) {
+    return <></>
+  }
+
+  return (
+    <span>Account: {account.substring(0, 8)}...{account.substring(account.length-6)}</span>
+  )
+}
+
+function Balance() {
+  const { account, library, chainId } = useWeb3React()
+
+  const [balance, setBalance] = React.useState()
+  React.useEffect(() => {
+    if (!!account && !!library) {
+      let stale = false
+
+      library
+        .getBalance(account)
+        .then((balance) => {
+          if (!stale) {
+            setBalance(decShift(balance, -18))
+          }
+        })
+        .catch(() => {
+          if (!stale) {
+            setBalance(null)
+          }
+        })
+
+      return () => {
+        stale = true
+        setBalance(undefined)
+      }
+    }
+  }, [account, library, chainId]) // ensures refresh if referential identity of library doesn't change across chainIds
+
+  if (isNaN(balance)) {
+    return <></>
+  }
+
+  return (
+    <span>Balance: {balance}</span>
+  )
+}
+
 function Header() {
-  const { connector, active } = useWeb3React()
+  const { connector } = useWeb3React()
 
   // handle logic to recognize the connector currently being activated
   const [activatingConnector, setActivatingConnector] = React.useState()
@@ -172,12 +221,12 @@ function Header() {
 
   return (
     <>
-      <div className='spacing-flex-container' style={{ display: 'flex' }}>
+      <div className='spacing-flex-container'>
         <Connection />
         <ChainId />
         <BlockNumber />
-        {/* <Account /> */}
-        {/*<Balance /> */}
+        <Account />
+        <Balance />
       </div>
     </>
   )
