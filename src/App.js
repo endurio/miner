@@ -131,13 +131,12 @@ function Connection() {
       {!!active ||
         <button
           disabled={disabled}
-          key='Injected'
           onClick={() => {
             setActivatingConnector(currentConnector)
             activate(currentConnector)
           }}
         >
-          {activating ? <Spinner color={'black'}/> : 'Injected'}
+          {activating ? <Spinner color={'black'}/> : 'Connect'}
         </button>
       }
       {(active || error) && (
@@ -146,7 +145,7 @@ function Connection() {
             deactivate()
           }}
         >
-          Deactivate
+          Disconnect
         </button>
       )}
     </div>
