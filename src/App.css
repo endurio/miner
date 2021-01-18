@@ -29,6 +29,10 @@
   color: #61dafb;
 }
 
+.App > hr {
+  margin: 0.3rem 0.3rem;
+}
+
 .spacing-flex-container {
   display: flex;
   flex-direction: row;
@@ -36,7 +40,22 @@
 }
 
 .spacing-flex-container > * {
-  margin: 0 6px;
+  margin: 0 5px;
+  padding: 0 5px;
+  border: solid 1px gray;
+}
+
+.spacing-flex-container button {
+  background: none!important;
+  border: none;
+  padding: 0!important;
+  font-size: 1em;
+  color: #069;
+  cursor: pointer;
+}
+
+.spacing-flex-container button:hover {
+  text-decoration: underline;
 }
 
 @keyframes App-logo-spin {

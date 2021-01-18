@@ -39,10 +39,10 @@ function getLibrary(provider) {
 
 function App () {
   return (
-      <div className="App">
-        <Header />
-        <hr style={{ margin: '0, 2rem' }} />
-      </div>
+    <div className="App">
+      <Header />
+      <hr />
+    </div>
   )
 }
 
