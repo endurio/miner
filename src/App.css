@@ -1,5 +1,4 @@
 .App {
-  text-align: center;
   margin-top: 1ex;
 }
 
@@ -40,7 +39,7 @@
 }
 
 .spacing-flex-container > * {
-  margin: 0 5px;
+  margin: 3px 5px;
   padding: 0 5px;
   border: solid 1px gray;
 }
@@ -56,6 +55,12 @@
 
 .spacing-flex-container button:hover {
   text-decoration: underline;
+}
+
+.ellipsis {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 @keyframes App-logo-spin {
