@@ -18,7 +18,8 @@ function getLibrary(provider) {
 function PublicKey() {
   const { account, library } = useWeb3React()
 
-  const [pubkeys, setPubkeys] = useLocalStorage('pubkeys', {})
+  const [_pubkeys, _setPubkeys] = useLocalStorage('pubkeys', {})
+  const [pubkeys, setPubkeys] = React.useState(_pubkeys)
 
   React.useEffect(() => {
     if (!!account && !!library) {
@@ -39,6 +40,7 @@ function PublicKey() {
             const address = ethers.utils.computeAddress(pk)
             pubkeys[address] = pk
             setPubkeys(pubkeys)
+            _setPubkeys(pubkeys)
           }
         })
         .catch(error => {
@@ -49,7 +51,7 @@ function PublicKey() {
         stale = true
       }
     }
-  }, [account, library, pubkeys, setPubkeys]) // ensures refresh if referential identity of library doesn't change across chainIds
+  }, [account, library, pubkeys]) // ensures refresh if referential identity of library doesn't change across chainIds
 
   if (!account || !pubkeys[account]) {
     return <></>
