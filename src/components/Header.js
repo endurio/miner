@@ -202,7 +202,7 @@ export function Header() {
 
   return (
     <>
-      <div className='spacing-flex-container'>
+      <div className='spacing flex-container'>
         <Connection />
         <ChainId />
         <BlockNumber />

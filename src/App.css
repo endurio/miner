@@ -32,19 +32,19 @@
   margin: 0.3rem 0.3rem;
 }
 
-.spacing-flex-container {
+.flex-container {
   display: flex;
   flex-direction: row;
   flex-wrap: wrap;
 }
 
-.spacing-flex-container > * {
+.flex-container.spacing > * {
   margin: 3px 5px;
   padding: 0 5px;
   border: solid 1px gray;
 }
 
-.spacing-flex-container button {
+.flex-container button {
   background: none!important;
   border: none;
   padding: 0!important;
@@ -53,8 +53,15 @@
   cursor: pointer;
 }
 
-.spacing-flex-container button:hover {
+.flex-container button:hover {
   text-decoration: underline;
+}
+
+.Dropdown-root {
+  cursor: pointer;
+}
+.Dropdown-placeholder::after {
+  content: '▼';
 }
 
 .ellipsis {
