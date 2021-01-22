@@ -56,7 +56,7 @@ export function Connection() {
       <span>
         Status: {active ? '✅' : error ? ('🔴' + getErrorMessage(error)) : '❌'}
       </span>
-      {!!active ||
+      {(!!active || !!error) ||
         <button
           disabled={disabled}
           onClick={() => {
