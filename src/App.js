@@ -95,7 +95,7 @@ function App () {
     }
   }, [account, pubkeys, coinType])
 
-  React.useEffect(() => {
+  function fetchData() {
     if (!!sender && !!apiKeys.BlockCypher) {
       const network = coinType === 'BTC' ? 'mainnet' : 'testnet'
       let stale = false
@@ -103,13 +103,14 @@ function App () {
         key: apiKeys.BlockCypher,
         network,
       })
-      setSummary({})
+      setSummary(undefined)
       client.Addresses.Summary([sender.address], (err, data) => {
         if (stale) {
           return
         }
         if (err) {
           console.error(err)
+          setSummary({err})
           return
         }
         setSummary(data[0])
@@ -118,7 +119,14 @@ function App () {
         stale = true
       }
     }
-  }, [sender]) // ensures refresh if referential identity of library doesn't change across chainIds
+  }
+
+  React.useEffect(fetchData, [sender]) // ensures refresh if referential identity of library doesn't change across chainIds
+
+  // statuses
+  const isLoading = !summary
+  const hasError = summary && summary.err
+  const hasSummary = summary && !summary.err
 
   return (
     <div className="App">
@@ -134,7 +142,13 @@ function App () {
           }} value={coinType} placeholder="Mining coin" />
         </div>
         {!!sender && <span className="ellipsis">Sender: {sender.address}</span>}
-        {!!summary && <span>Sender Balance: {decShift(summary.balance, -8)}</span>}
+        <div>
+          {isLoading ? <div className="lds-dual-ring"></div> : <button onClick={fetchData}>Fetch</button>}
+        </div>
+      </div>
+      <div className="spacing flex-container">
+        {hasError && <span className="error">{summary.err.toString()}</span>}
+        {hasSummary && <span>Sender Balance: {decShift(summary.balance, -8)}</span>}
       </div>
     </div>
   )
