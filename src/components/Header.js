@@ -1,7 +1,6 @@
 import React from 'react'
 import { useWeb3React, UnsupportedChainIdError } from '@web3-react/core'
 import { useEagerConnect, useInactiveListener } from '../hooks'
-import { Spinner } from './Spinner'
 import { decShift } from '../lib/big'
 import {
   NoEthereumProviderError,
@@ -64,7 +63,7 @@ export function Connection() {
             activate(currentConnector)
           }}
         >
-          {activating ? <Spinner color={'black'}/> : 'Connect'}
+          {activating ? <div className="lds-dual-ring"></div> : 'Connect'}
         </button>
       }
       {(active || error) && (

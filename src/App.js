@@ -1,4 +1,5 @@
 import './App.css'
+import './components/lds.css'
 import React from 'react'
 import Dropdown from 'react-dropdown'
 import { Web3ReactProvider, useWeb3React } from '@web3-react/core'
