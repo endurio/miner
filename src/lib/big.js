@@ -122,7 +122,7 @@ function _decShiftPositive(s, d){
 
 function decShift(s, d) {
     if (!s) {
-        return '';
+        return 0;
     }
     s = String(s)
     if (s.startsWith('0x')) {

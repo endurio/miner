@@ -8,6 +8,8 @@ import { useLocalStorage } from '@rehooks/local-storage'
 import { ethers } from 'ethers'
 import ci from 'coininfo'
 import { ECPair, payments } from 'bitcoinjs-lib'
+import blockcypher from 'blockcypher-unofficial'
+import { decShift } from './lib/big'
 
 function getLibrary(provider) {
   const library = new Web3Provider(provider)
@@ -15,12 +17,33 @@ function getLibrary(provider) {
   return library
 }
 
-function PublicKey() {
-  const { account, library } = useWeb3React()
+function getSender(pubkey, coinType) {
+  const coinInfo = ci(coinType)
+  const network = {
+    messagePrefix: coinInfo.messagePrefix,
+    bech32: coinInfo.bech32,
+    bip32: coinInfo.versions.bip32,
+    pubKeyHash: coinInfo.versions.public,
+    scriptHash: coinInfo.versions.scripthash,
+    wif: coinInfo.versions.private,
+  }
+  const keyPair = ECPair.fromPublicKey(Buffer.from(pubkey.substring(2), 'hex'))
+  return payments.p2pkh({pubkey: keyPair.publicKey, network})
+}
 
+function App () {
+  const { account, library } = useWeb3React()
   const [_pubkeys, _setPubkeys] = useLocalStorage('pubkeys', {})
   const [pubkeys, setPubkeys] = React.useState(_pubkeys)
+  const options = ['BTC', 'BTC-TEST']
+  const defaultOption = options[1]
+  const [_coinType, _setCoinType] = useLocalStorage('cointype', defaultOption)
+  const [coinType, setCoinType] = React.useState(_coinType)
+  const [sender, setSender] = React.useState()
+  const [apiKeys] = useLocalStorage('apiKeys')
+  const [summary, setSummary] = React.useState()
 
+  // public key
   React.useEffect(() => {
     if (!!account && !!library) {
       if (pubkeys[account]) {
@@ -51,70 +74,66 @@ function PublicKey() {
         stale = true
       }
     }
-  }, [account, library, pubkeys]) // ensures refresh if referential identity of library doesn't change across chainIds
+  }, [account, library]) // ensures refresh if referential identity of library doesn't change across chainIds
 
-  if (!account || !pubkeys[account]) {
-    return <></>
-  }
 
-  return (
-    <span className="ellipsis">PublicKey: {pubkeys[account]}</span>
-  )
-}
-
-function CoinType() {
-  const options = ['BTC', 'BTC-TEST']
-  const defaultOption = options[1]
-
-  const [coinType, setCoinType] = useLocalStorage('cointype', defaultOption)
-  
-  return (
-    <Dropdown options={options} onChange={item=>setCoinType(item.value)} value={coinType} placeholder="Mining coin" />
-  )
-}
-
-function Sender() {
-  const { account, library } = useWeb3React()
-  const [pubkeys, setPubkeys] = useLocalStorage('pubkeys')
-  const [coinType] = useLocalStorage('cointype')
-  if (!account || !pubkeys[account] || !coinType) {
-    return <></>
-  }
-
-  try {
-    const coinInfo = ci(coinType)
-    const network = {
-      messagePrefix: coinInfo.messagePrefix,
-      bech32: coinInfo.bech32,
-      bip32: coinInfo.versions.bip32,
-      pubKeyHash: coinInfo.versions.public,
-      scriptHash: coinInfo.versions.scripthash,
-      wif: coinInfo.versions.private,
+  // sender
+  React.useEffect(() => {
+    if (!account || !pubkeys) {
+      return
     }
-    const keyPair = ECPair.fromPublicKey(Buffer.from(pubkeys[account].substring(2), 'hex'))
-    const sender = payments.p2pkh({pubkey: keyPair.publicKey, network})
-    return (
-      <span className="ellipsis">Sender: {sender.address}</span>
-    )
-  } catch(err) {
-    console.error(err)
-    delete pubkeys[account]
-    setPubkeys(pubkeys)
-  }
-}
+    const pubkey = pubkeys[account]
+    if (pubkey && coinType) {
+      try {
+        setSender(getSender(pubkey, coinType))
+      } catch(err) {
+        console.error(err)
+        delete pubkeys[account]
+        setPubkeys(pubkeys)
+      }
+    }
+  }, [account, pubkeys, coinType])
 
-function App () {
+  React.useEffect(() => {
+    if (!!sender && !!apiKeys.BlockCypher) {
+      const network = coinType === 'BTC' ? 'mainnet' : 'testnet'
+      let stale = false
+      const client = blockcypher({
+        key: apiKeys.BlockCypher,
+        network,
+      })
+      setSummary({})
+      client.Addresses.Summary([sender.address], (err, data) => {
+        if (stale) {
+          return
+        }
+        if (err) {
+          console.error(err)
+          return
+        }
+        setSummary(data[0])
+      })
+      return () => {
+        stale = true
+      }
+    }
+  }, [sender]) // ensures refresh if referential identity of library doesn't change across chainIds
+
   return (
     <div className="App">
       <Header />
       <div className="spacing flex-container">
-        <PublicKey />
+        {!!pubkeys[account] && <span className="ellipsis">PublicKey: {pubkeys[account]}</span>}
       </div>
       <div className="spacing flex-container">
         <div className="flex-container">
-          Network:&nbsp;<CoinType />
+          Network:&nbsp;<Dropdown options={options} onChange={item=>{
+            setCoinType(item.value)
+            _setCoinType(item.value)
+          }} value={coinType} placeholder="Mining coin" />
         </div>
-        <Sender />
+        {!!sender && <span className="ellipsis">Sender: {sender.address}</span>}
+        {!!summary && <span>Sender Balance: {decShift(summary.balance, -8)}</span>}
       </div>
     </div>
   )
