@@ -33,24 +33,36 @@ function getSender(pubkey, coinType) {
 }
 
 function usePersistent(key, defaulValue) {
-  const [_value, _setValue] = useLocalStorage(key, defaulValue)
-  const [value, setValue] = React.useState(_value)
-  React.useEffect(() => _setValue(value), [value])
-  return [value, setValue]
+  function save(o) {
+    return typeof o === 'object' ? JSON.stringify(o) : o
+  }
+  function load(o) {
+    try {
+      return JSON.parse(o)
+    } catch(err) {
+    }
+    return o
+  }
+  const [_value, _setValue] = useLocalStorage(key, save(defaulValue))
+  const [value, setValue] = React.useState(load(_value))
+  return [value, v => {
+    setValue(v)
+    _setValue(save(v))
+  }]
 }
 
 function App () {
   const { account, library } = useWeb3React()
+  const [apiKeys, setApiKeys] = usePersistent('apiKeys', {})
   const [pubkeys, setPubkeys] = usePersistent('pubkeys', {})
   const options = ['BTC', 'BTC-TEST']
   const defaultOption = options[1]
   const [coinType, setCoinType] = usePersistent('cointype', defaultOption)
   const [sender, setSender] = React.useState()
-  const [apiKeys] = useLocalStorage('apiKeys')
   const [summary, setSummary] = React.useState()
   const [unspents, setUnspents] = React.useState()
   const [maxBounty, setMaxBounty] = usePersistent('maxBounty', 8)
-  const [fee, setFee] = usePersistent('fee', 1306)
+  const [fee, setFee] = usePersistent('fee', {'BTC': 1306, 'BTC-TEST': 999})
 
   // public key
   React.useEffect(() => {
@@ -127,7 +139,15 @@ function App () {
     }
   }
 
-  React.useEffect(fetchData, [sender]) // ensures refresh if referential identity of library doesn't change across chainIds
+  React.useEffect(fetchData, [sender, apiKeys]) // ensures refresh if referential identity of library doesn't change across chainIds
+
+  function promptForKey(key) {
+    const value = window.prompt(`API key for ${key}:`, apiKeys[key])
+    if (value != null) {
+      apiKeys[key] = value
+      setApiKeys(apiKeys)
+    }
+  }
 
   // statuses
   const isLoading = !summary
@@ -137,6 +157,13 @@ function App () {
   return (
     <div className="App">
       <Header />
+      <div className="spacing flex-container">
+        <div className="flex-container">
+          <span>API Keys:</span>
+          <span>&nbsp;{apiKeys.BlockCypher ? '✅' : '❌'}<button onClick={() => promptForKey('BlockCypher')}>BlockCypher</button></span>
+          {/* <span>&nbsp;{apiKeys.CryptoAPIs ? '✅' : '❌'}<button onClick={() => promptForKey('CryptoAPIs')}>CryptoAPIs</button></span> */}
+        </div>
+      </div>
       <div className="spacing flex-container">
         {!!pubkeys[account] && <span className="ellipsis">PublicKey: {pubkeys[account]}</span>}
       </div>
@@ -162,12 +189,13 @@ function App () {
             }}
           />
         </div>
-        <div className="flex-container">Fee:&nbsp;{fee[coinType]}
+        <div className="flex-container">Fee:&nbsp;
           <input style={{width: 60}}
-            value={fee} onChange={event=>{
+            value={fee[coinType]} onChange={event=>{
               const value = parseInt(event.target.value)
               if (value > 0) {
-                setFee(value)
+                fee[coinType] = value
+                setFee(fee)
               }
             }}
           />

@@ -9,7 +9,6 @@ import {
 import {
   injected,
 } from '../connectors'
-import { useLocalStorage } from '@rehooks/local-storage'
 
 function getErrorMessage(error) {
   if (error instanceof NoEthereumProviderError) {
@@ -183,28 +182,6 @@ export function Balance() {
   )
 }
 
-export function ApiKeys() {
-  const [_apiKeys, _setApiKeys] = useLocalStorage('apiKeys', {})
-  const [apiKeys, setApiKeys] = React.useState(_apiKeys)
-
-  function promptForKey(key) {
-    const value = window.prompt(`API key for ${key}:`, apiKeys[key])
-    if (value != null) {
-      apiKeys[key] = value
-      setApiKeys(apiKeys)
-      _setApiKeys(apiKeys)
-    }
-  }
-
-  return (
-    <div className="flex-container">
-      <span>API Keys:</span>
-      <span>&nbsp;{apiKeys.BlockCypher ? '✅' : '❌'}<button onClick={() => promptForKey('BlockCypher')}>BlockCypher</button></span>
-      <span>&nbsp;{apiKeys.CryptoAPIs ? '✅' : '❌'}<button onClick={() => promptForKey('CryptoAPIs')}>CryptoAPIs</button></span>
-    </div>
-  )
-}
-
 export function Header() {
   const { connector } = useWeb3React()
 
@@ -230,7 +207,6 @@ export function Header() {
         <BlockNumber />
         <Account />
         <Balance />
-        <ApiKeys />
       </div>
     </>
   )
