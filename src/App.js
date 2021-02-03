@@ -32,17 +32,25 @@ function getSender(pubkey, coinType) {
   return payments.p2pkh({pubkey: keyPair.publicKey, network})
 }
 
+function usePersistent(key, defaulValue) {
+  const [_value, _setValue] = useLocalStorage(key, defaulValue)
+  const [value, setValue] = React.useState(_value)
+  React.useEffect(() => _setValue(value), [value])
+  return [value, setValue]
+}
+
 function App () {
   const { account, library } = useWeb3React()
-  const [_pubkeys, _setPubkeys] = useLocalStorage('pubkeys', {})
-  const [pubkeys, setPubkeys] = React.useState(_pubkeys)
+  const [pubkeys, setPubkeys] = usePersistent('pubkeys', {})
   const options = ['BTC', 'BTC-TEST']
   const defaultOption = options[1]
-  const [_coinType, _setCoinType] = useLocalStorage('cointype', defaultOption)
-  const [coinType, setCoinType] = React.useState(_coinType)
+  const [coinType, setCoinType] = usePersistent('cointype', defaultOption)
   const [sender, setSender] = React.useState()
   const [apiKeys] = useLocalStorage('apiKeys')
   const [summary, setSummary] = React.useState()
+  const [unspents, setUnspents] = React.useState()
+  const [maxBounty, setMaxBounty] = usePersistent('maxBounty', 8)
+  const [fee, setFee] = usePersistent('fee', 1306)
 
   // public key
   React.useEffect(() => {
@@ -64,7 +72,6 @@ function App () {
             const address = ethers.utils.computeAddress(pk)
             pubkeys[address] = pk
             setPubkeys(pubkeys)
-            _setPubkeys(pubkeys)
           }
         })
         .catch(error => {
@@ -98,26 +105,25 @@ function App () {
   function fetchData() {
     if (!!sender && !!apiKeys.BlockCypher) {
       const network = coinType === 'BTC' ? 'mainnet' : 'testnet'
-      let stale = false
       const client = blockcypher({
         key: apiKeys.BlockCypher,
         network,
       })
       setSummary(undefined)
       client.Addresses.Summary([sender.address], (err, data) => {
-        if (stale) {
-          return
-        }
         if (err) {
-          console.error(err)
-          setSummary({err})
-          return
+          return console.error(err)
         }
         setSummary(data[0])
       })
-      return () => {
-        stale = true
-      }
+      setUnspents(undefined)
+      client.Addresses.Unspents([sender.address], (err, data) => {
+        if (err) {
+          return console.error(err)
+        }
+        console.error(data[0])
+        setUnspents(data[0])
+      })
     }
   }
 
@@ -136,19 +142,36 @@ function App () {
       </div>
       <div className="spacing flex-container">
         <div className="flex-container">
-          Network:&nbsp;<Dropdown options={options} onChange={item=>{
-            setCoinType(item.value)
-            _setCoinType(item.value)
-          }} value={coinType} placeholder="Mining coin" />
+          Network:&nbsp;<Dropdown options={options} onChange={item=>setCoinType(item.value)} value={coinType} placeholder="Mining coin" />
         </div>
         {!!sender && <span className="ellipsis">Sender: {sender.address}</span>}
         <div>
           {isLoading ? <div className="lds-dual-ring"></div> : <button onClick={fetchData}>Fetch</button>}
         </div>
-      </div>
-      <div className="spacing flex-container">
         {hasError && <span className="error">{summary.err.toString()}</span>}
         {hasSummary && <span>Sender Balance: {decShift(summary.balance, -8)}</span>}
+      </div>
+      <div className="spacing flex-container">
+        <div className="flex-container">Max Bounty:&nbsp;
+          <input maxLength={1} style={{width: 10}}
+            value={maxBounty} onChange={event=>{
+              const value = parseInt(event.target.value)
+              if (value >= 0 && value <= 8) {
+                setMaxBounty(event.target.value)
+              }
+            }}
+          />
+        </div>
+        <div className="flex-container">Fee:&nbsp;{fee[coinType]}
+          <input style={{width: 60}}
+            value={fee} onChange={event=>{
+              const value = parseInt(event.target.value)
+              if (value > 0) {
+                setFee(value)
+              }
+            }}
+          />
+        </div>
       </div>
     </div>
   )
