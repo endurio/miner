@@ -8,9 +8,9 @@ import { Web3ReactProvider, useWeb3React } from '@web3-react/core'
 import { Web3Provider } from '@ethersproject/providers'
 import { Header } from './components/Header'
 import { useLocalStorage } from '@rehooks/local-storage'
-import { ethers } from 'ethers'
+import { ethers, Signer } from 'ethers'
 import ci from 'coininfo'
-import { ECPair, payments } from 'bitcoinjs-lib'
+import { ECPair, payments, Psbt } from 'bitcoinjs-lib'
 import blockcypher from './lib/blockcypher'
 import { decShift } from './lib/big'
 
@@ -83,6 +83,7 @@ function App () {
   const [accData, setAccData] = React.useState()
   const [chainData, setChainData] = React.useState()
   const [input, setInput] = React.useState()
+  const [btx, setBtx] = React.useState()
 
   React.useEffect(() => {
     const network = coinType === 'BTC' ? 'mainnet' : 'testnet'
@@ -237,11 +238,113 @@ function App () {
         return BigInt(hash) % 32n == 0
       }
     }
-  }, [client, accData, chainData])
+  }, [client, accData, chainData, maxBounty])
 
   React.useEffect(() => {
-    console.error(input)
-  }, [input])
+    if (!input || !accData || !input.recipients) {
+      return
+    }
+
+    // construct the inputs list with the bounty input at the first
+    const recipients = input.recipients
+    const inputs = [input]
+    accData.txrefs.forEach(o => {
+      delete o.recipients
+      if (o.txid !== input.txid || o.vout !== input.vout) {
+        inputs.push(o)
+      }
+    })
+
+    const network = getNetwork(coinType)
+    const psbt = new Psbt({network});
+
+    let outValue = 0
+    // add custome transfer output here
+    // outValue += value
+
+    console.log('add the memo output')
+    const dataScript = payments.embed({data: [Buffer.from('endur.io', 'utf8')]})
+    psbt.addOutput({
+      script: dataScript.output,
+      value: 0,
+    })
+
+    console.log('build the mining outputs and required inputs')
+    build(psbt, inputs, recipients, sender.address, outValue)
+
+    async function build(psbt, inputs, recipients, sender, outValue = 0) {
+      let inValue = 0
+  
+      async function buildWithoutChange() {
+        let recIdx = 0
+        for (const input of inputs) {
+          const tx = await new Promise((resolve, reject) => {
+            client.get(`/txs/${input.tx_hash}?includeHex=true`, (err, data) => {
+              if (err) return reject(err)
+              resolve (data)
+            })
+          })
+
+          psbt.addInput({
+            hash: input.tx_hash,
+            index: input.tx_output_n,
+            // non-segwit inputs now require passing the whole previous tx as Buffer
+            nonWitnessUtxo: Buffer.from(tx.hex, 'hex'),
+          })
+          // psbt.signInput(psbt.txInputs.length-1, ECPairs[sender])
+          inValue += parseInt(input.value)
+
+          console.error(recipients)
+          while (recIdx < recipients.length) {
+            // const rec = recipients[recIdx % (recipients.length>>1)]     // duplicate recipient
+            const rec = recipients[recIdx]
+            const output = rec.outputs[rec.outputs.length-1]
+            const amount = 123 // BOUNTY[symbol] // TODO: calculate this
+            if (outValue + amount > inValue) {
+              break;  // need more input
+            }
+            outValue += amount
+            psbt.addOutput({
+              script: Buffer.from(output.script, 'hex'),
+              value: amount,
+            })
+            if (++recIdx >= recipients.length) {
+              console.log('recipients list exhausted')
+              return
+            }
+          }
+        }
+        console.log('utxo list exhausted')
+      }
+  
+      await buildWithoutChange()
+
+      console.error('size before adding change output', psbt.toBuffer().length)
+      const change = inValue - outValue - fee[coinType]
+      if (change <= 0) {
+        setBtx('insufficient fund')
+        return
+      }
+      psbt.addOutput({
+        address: sender,
+        value: inValue - outValue - fee[coinType],
+      })
+  
+      setBtx(psbt)
+    }
+  
+    function getNetwork (coinType) {
+      const coinInfo = ci(coinType);
+      return {
+          messagePrefix: coinInfo.messagePrefix ? coinInfo.messagePrefix : '',
+          bech32: coinInfo.bech32,
+          bip32: coinInfo.versions.bip32,
+          pubKeyHash: coinInfo.versions.public,
+          scriptHash: coinInfo.versions.scripthash,
+          wif: coinInfo.versions.private,
+      };
+    }
+  }, [sender, accData, input, fee])
 
   function promptForKey(key) {
     const value = window.prompt(`API key for ${key}:`, apiKeys[key])
@@ -251,10 +354,43 @@ function App () {
     }
   }
 
+  function doSend() {
+    console.error('size after adding change output', btx.toBuffer().length)
+    const publicKey = Buffer.from(pubkeys[account].substring(2), 'hex')
+    const signer = ECPair.fromPublicKey(publicKey, {compressed: true})
+    signer.sign = hash => {
+      return new Promise((resolve, reject) => {
+        return library
+          .getSigner(account)
+          .signMessage(hash)
+          .then(signature => resolve(Buffer.from(signature.substr(2, 128), 'hex')))
+          .catch(reject)
+      })
+    }
+    btx.signAllInputsAsync(signer).then(() => {
+      console.error('size after finalize all inputs', btx.toBuffer().length)
+      btx.finalizeAllInputs()
+      setBtx(btx)
+      const tx = btx.extractTransaction()
+      console.error(tx)
+    })
+  }
+
   // statuses
   const isLoading = !accData
   const hasError = accData && accData.err
   const hasSummary = accData && !accData.err
+
+  if (typeof btx === 'string') {
+    var btxError = btx
+  } else if (btx) {
+    var btxDisplay = JSON.stringify(btx.data.globalMap.unsignedTx.tx, (key, value) => {
+      if (value.type === 'Buffer') {
+        return '0x' + Buffer.from(value.data).toString('hex')
+      }
+      return value
+    }, 2)
+  }
 
   return (
     <div className="App">
@@ -302,7 +438,12 @@ function App () {
             }}
           />
         </div>
+        {btxDisplay && <div className="flex-container">
+          <span><button onClick={() => doSend()}>Sign & Send</button></span>
+        </div>}
       </div>
+      {btxError && <div className='spacing flex-container'><span className="error">{btxError}</span></div>}
+      {btxDisplay && <div className='spacing flex-container'><pre>{btxDisplay}</pre></div>}
     </div>
   )
 }
