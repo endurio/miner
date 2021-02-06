@@ -1,3 +1,5 @@
+/* global BigInt */
+
 import './App.css'
 import './components/lds.css'
 import React from 'react'
@@ -9,8 +11,10 @@ import { useLocalStorage } from '@rehooks/local-storage'
 import { ethers } from 'ethers'
 import ci from 'coininfo'
 import { ECPair, payments } from 'bitcoinjs-lib'
-import blockcypher from 'blockcypher-unofficial'
+import blockcypher from './lib/blockcypher'
 import { decShift } from './lib/big'
+
+const { keccak256 } = ethers.utils
 
 function getParameterByName(name, url = window.location.href) {
   name = name.replace(/[\[\]]/g, '\\$&');
@@ -73,10 +77,22 @@ function App () {
   const defaultOption = options[1]
   const [coinType, setCoinType] = usePersistent('cointype', defaultOption)
   const [sender, setSender] = React.useState()
-  const [summary, setSummary] = React.useState()
-  const [unspents, setUnspents] = React.useState()
   const [maxBounty, setMaxBounty] = usePersistent('maxBounty', 8)
   const [fee, setFee] = usePersistent('fee', {'BTC': 1306, 'BTC-TEST': 999})
+  const [client, setClient] = React.useState()
+  const [accData, setAccData] = React.useState()
+  const [chainData, setChainData] = React.useState()
+  const [input, setInput] = React.useState()
+
+  React.useEffect(() => {
+    const network = coinType === 'BTC' ? 'mainnet' : 'testnet'
+    const client = blockcypher({
+      inBrowser: true,
+      key: apiKeys.BlockCypher,
+      network,
+    })
+    setClient(client)
+  }, [coinType, apiKeys])
 
   // public key
   React.useEffect(() => {
@@ -129,31 +145,103 @@ function App () {
   }, [account, pubkeys, coinType])
 
   function fetchData() {
-    if (!!sender && !!apiKeys.BlockCypher) {
-      const network = coinType === 'BTC' ? 'mainnet' : 'testnet'
-      const client = blockcypher({
-        key: apiKeys.BlockCypher,
-        network,
-      })
-      setSummary(undefined)
-      client.Addresses.Summary([sender.address], (err, data) => {
-        if (err) {
-          return console.error(err)
-        }
-        setSummary(data[0])
-      })
-      setUnspents(undefined)
-      client.Addresses.Unspents([sender.address], (err, data) => {
-        if (err) {
-          return console.error(err)
-        }
-        console.error(data[0])
-        setUnspents(data[0])
+    if (!apiKeys || !client) {
+      return
+    }
+    if (!!sender) {
+      setAccData(undefined)
+      client.get(`/addrs/${sender.address}?unspentOnly=true`, (err, data) => {
+        if (err) return console.error(err)
+        setAccData(data)
       })
     }
+    setChainData(undefined)
+    client.get('', (err, data) => {
+      if (err) return console.error(err)
+      setChainData(data)
+    })
   }
+  React.useEffect(fetchData, [sender, client]) // ensures refresh if referential identity of library doesn't change across chainIds
 
-  React.useEffect(fetchData, [sender, apiKeys]) // ensures refresh if referential identity of library doesn't change across chainIds
+  React.useEffect(() => {
+    if (!client || !chainData || !accData || !accData.txrefs) {
+      return
+    }
+
+    // cache for re-iterate
+    const blocks = {}
+
+    searchForBountyInput(accData.txrefs).then(setInput)
+
+    async function searchForBountyInput(utxos, maxBlocks = 6) {
+      for (const utxo of utxos) {
+        utxo.recipients = []
+        for (let n = chainData.height; n > chainData.height-maxBlocks; --n) {
+          try {
+            if (!blocks[n]) {
+              const block = await new Promise((resolve, reject) => {
+                // blockcypher limits 500 tx per block results, we only use the first 500 txs of the block for simplicity
+                // ?txstart=0&limit=500
+                client.get(`/blocks/${n}`, (err, data) => {
+                  if (err) return reject(err)
+                  resolve (data)
+                })
+              })
+              blocks[n] = block
+            }
+            const block = blocks[n]
+            if (block.bits == 0x1d00ffff) {
+              continue    // skip testnet minimum difficulty blocks
+            }
+            for (const recipient of block.txids) {
+              if (!isHit(utxo.tx_hash, recipient)) {
+                continue
+              }
+              try {
+                const tx = await new Promise((resolve, reject) => {
+                  client.get(`/txs/${recipient}`, (err, data) => {
+                    if (err) return reject(err)
+                    resolve (data)
+                  })
+                })
+                if (tx.block_index == 0) {
+                  continue    // skip the coinbase tx
+                }
+                // check for OP_RET in recipient tx
+                const hasOpRet = tx.outputs.some(o => o.script.startsWith('6a'))   // OP_RET = 0x6a
+                if (hasOpRet) {
+                  continue
+                }
+                // TODO: check and skip existing address/script
+                utxo.recipients.push(tx)
+                if (utxo.recipients.length >= maxBounty) {
+                  console.log(`found the first UTXO with enough ${maxBounty} bounty outputs`)
+                  return utxo
+                }
+              } catch (err) {
+                console.error(err)
+              }
+            }
+          } catch(err) {
+            console.error(err)
+          }
+        }
+      }
+      console.log(`use the best UTXO found`)
+      const utxoWithMostRecipient = utxos.reduce((prev, current) => prev.recipients.length > current.recipients.length ? prev : current)
+      return utxoWithMostRecipient
+
+      function isHit(txid, recipient) {
+        // use (recipient+txid).reverse() for LE(txid)+LE(recipient)
+        const hash = keccak256(Buffer.from(recipient+txid, 'hex').reverse())
+        return BigInt(hash) % 32n == 0
+      }
+    }
+  }, [client, accData, chainData])
+
+  React.useEffect(() => {
+    console.error(input)
+  }, [input])
 
   function promptForKey(key) {
     const value = window.prompt(`API key for ${key}:`, apiKeys[key])
@@ -164,9 +252,9 @@ function App () {
   }
 
   // statuses
-  const isLoading = !summary
-  const hasError = summary && summary.err
-  const hasSummary = summary && !summary.err
+  const isLoading = !accData
+  const hasError = accData && accData.err
+  const hasSummary = accData && !accData.err
 
   return (
     <div className="App">
@@ -189,8 +277,8 @@ function App () {
         <div>
           {isLoading ? <div className="lds-dual-ring"></div> : <button onClick={fetchData}>Fetch</button>}
         </div>
-        {hasError && <span className="error">{summary.err.toString()}</span>}
-        {hasSummary && <span>Sender Balance: {decShift(summary.balance, -8)}</span>}
+        {hasError && <span className="error">{accData.err.toString()}</span>}
+        {hasSummary && <span>Sender Balance: {decShift(accData.balance, -8)}</span>}
       </div>
       <div className="spacing flex-container">
         <div className="flex-container">Max Bounty:&nbsp;
