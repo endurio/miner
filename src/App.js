@@ -5,12 +5,12 @@ import './components/lds.css'
 import React from 'react'
 import Dropdown from 'react-dropdown'
 import { Web3ReactProvider, useWeb3React } from '@web3-react/core'
-import { Web3Provider } from '@ethersproject/providers'
+import { getNetwork, Web3Provider } from '@ethersproject/providers'
 import { Header } from './components/Header'
 import { useLocalStorage } from '@rehooks/local-storage'
-import { ethers, Signer } from 'ethers'
+import { ethers, Signer, utils } from 'ethers'
 import ci from 'coininfo'
-import { ECPair, payments, Psbt } from 'bitcoinjs-lib'
+import { ECPair, payments, Psbt, address, script } from 'bitcoinjs-lib'
 import blockcypher from './lib/blockcypher'
 import { decShift } from './lib/big'
 
@@ -90,6 +90,7 @@ function App () {
   const options = ['BTC', 'BTC-TEST']
   const defaultOption = options[1]
   const [coinType, setCoinType] = usePersistent('cointype', defaultOption)
+  const [network, setNetwork] = React.useState(getNetwork(coinType))
   const [sender, setSender] = React.useState()
   const [maxBounty, setMaxBounty] = usePersistent('maxBounty', 8)
   const [fee, setFee] = usePersistentMap('fee', {'BTC': 1306, 'BTC-TEST': 999})
@@ -98,6 +99,8 @@ function App () {
   const [chainData, setChainData] = React.useState()
   const [input, setInput] = React.useState()
   const [btx, setBtx] = React.useState()
+
+  React.useEffect(() => setNetwork(getNetwork(coinType)), [coinType])
 
   React.useEffect(() => {
     const network = coinType === 'BTC' ? 'mainnet' : 'testnet'
@@ -139,7 +142,6 @@ function App () {
       }
     }
   }, [account, library]) // ensures refresh if referential identity of library doesn't change across chainIds
-
 
   // sender
   React.useEffect(() => {
@@ -267,8 +269,6 @@ function App () {
       }
     })
 
-    const network = getNetwork(coinType)
-
     build(inputs, recipients, sender.address).then(psbt => {
       setBtx(psbt)
     })
@@ -348,19 +348,7 @@ function App () {
         console.log('utxo list exhausted')
       }
     }
-  
-    function getNetwork (coinType) {
-      const coinInfo = ci(coinType);
-      return {
-          messagePrefix: coinInfo.messagePrefix ? coinInfo.messagePrefix : '',
-          bech32: coinInfo.bech32,
-          bip32: coinInfo.versions.bip32,
-          pubKeyHash: coinInfo.versions.public,
-          scriptHash: coinInfo.versions.scripthash,
-          wif: coinInfo.versions.private,
-      };
-    }
-  }, [sender, accData, input, fee])
+  }, [sender, accData, input, fee, coinType, network])
 
   function promptForKey(key) {
     const value = window.prompt(`API key for ${key}:`, apiKeys[key])
@@ -391,6 +379,18 @@ function App () {
     })
   }
 
+  function getNetwork (coinType) {
+    const coinInfo = ci(coinType);
+    return {
+        messagePrefix: coinInfo.messagePrefix ? coinInfo.messagePrefix : '',
+        bech32: coinInfo.bech32,
+        bip32: coinInfo.versions.bip32,
+        pubKeyHash: coinInfo.versions.public,
+        scriptHash: coinInfo.versions.scripthash,
+        wif: coinInfo.versions.private,
+    };
+  }
+
   // statuses
   const isLoading = !accData
   const hasError = accData && accData.err
@@ -399,12 +399,26 @@ function App () {
   if (typeof btx === 'string') {
     var btxError = btx
   } else if (btx) {
-    var btxDisplay = JSON.stringify(btx.data.globalMap.unsignedTx.tx, (key, value) => {
-      if (value.type === 'Buffer') {
-        return '0x' + Buffer.from(value.data).toString('hex')
+    var btxDisplay = decodeTx(btx.data.globalMap.unsignedTx.tx)
+  }
+
+  function decodeTx(tx) {
+    let btxDisplay = ''
+    for (const {script: s, value: v} of tx.outs) {
+      const asm = script.toASM(s)
+      if (asm.startsWith('OP_RETURN ')) {
+        btxDisplay += 'OP_RETURN ' + utils.toUtf8String(Buffer.from(asm.substring(10), 'hex'))
+        btxDisplay += (v ? ` with ${decShift(v, -8)}\n` : '\n')
+      } else {
+        const adr = address.fromOutputScript(s, network)
+        if (adr != sender.address) {
+          btxDisplay += `${decShift(v, -8)} → ${adr}\n`
+        } else {
+          btxDisplay += `${adr} ← ${decShift(v, -8)}`
+        }
       }
-      return value
-    }, 2)
+    }
+    return btxDisplay
   }
 
   return (
