@@ -50,35 +50,49 @@ function getSender(pubkey, coinType) {
   return payments.p2pkh({pubkey: keyPair.publicKey, network})
 }
 
-function usePersistent(key, defaulValue) {
-  function save(o) {
-    return typeof o === 'object' ? JSON.stringify(o) : o
-  }
-  function load(o) {
-    try {
-      return JSON.parse(o)
-    } catch(err) {
+function usePersistentMap(key, defaultMap) {
+  const serialize = map => JSON.stringify(Array.from(map.entries()))
+  const deserialize = map => {
+    if (typeof map === 'string') {
+      map = JSON.parse(map)
     }
-    return o
+    return new Map(map)
   }
-  const [_value, _setValue] = useLocalStorage(key, save(defaulValue))
-  const [value, setValue] = React.useState(load(_value))
+  const [_value, _setValue] = useLocalStorage(key, serialize(new Map(Object.entries(defaultMap||{}))))
+  const [value, setValue] = React.useState(deserialize(_value))
+  return [value, (k, v) => {
+    setValue(prev => {
+      const map = new Map(prev)
+      if (typeof v === 'undefined') {
+        map.delete(k)
+      } else {
+        map.set(k, v)
+      }
+      _setValue(serialize(map))
+      return map
+    })
+  }]
+}
+
+function usePersistent(key, defaultValue) {
+  const [_value, _setValue] = useLocalStorage(key, defaultValue)
+  const [value, setValue] = React.useState(_value)
   return [value, v => {
     setValue(v)
-    _setValue(save(v))
+    _setValue(v)
   }]
 }
 
 function App () {
   const { account, library } = useWeb3React()
-  const [apiKeys, setApiKeys] = usePersistent('apiKeys', {})
-  const [pubkeys, setPubkeys] = usePersistent('pubkeys', {})
+  const [apiKeys, setApiKey] = usePersistentMap('apiKeys')
+  const [pubkeys, setPubkey] = usePersistentMap('pubkeys')
   const options = ['BTC', 'BTC-TEST']
   const defaultOption = options[1]
   const [coinType, setCoinType] = usePersistent('cointype', defaultOption)
   const [sender, setSender] = React.useState()
   const [maxBounty, setMaxBounty] = usePersistent('maxBounty', 8)
-  const [fee, setFee] = usePersistent('fee', {'BTC': 1306, 'BTC-TEST': 999})
+  const [fee, setFee] = usePersistentMap('fee', {'BTC': 1306, 'BTC-TEST': 999})
   const [client, setClient] = React.useState()
   const [accData, setAccData] = React.useState()
   const [chainData, setChainData] = React.useState()
@@ -89,7 +103,7 @@ function App () {
     const network = coinType === 'BTC' ? 'mainnet' : 'testnet'
     const client = blockcypher({
       inBrowser: true,
-      key: apiKeys.BlockCypher,
+      key: apiKeys.get('BlockCypher'),
       network,
     })
     setClient(client)
@@ -98,7 +112,7 @@ function App () {
   // public key
   React.useEffect(() => {
     if (!!account && !!library) {
-      if (pubkeys[account]) {
+      if (pubkeys.get(account)) {
         return () => {}
       }
       let stale = false
@@ -113,8 +127,7 @@ function App () {
           if (!stale) {
             const pk = ethers.utils.recoverPublicKey(messageHash, signature)
             const address = ethers.utils.computeAddress(pk)
-            pubkeys[address] = pk
-            setPubkeys(pubkeys)
+            setPubkey(address, pk)
           }
         })
         .catch(error => {
@@ -133,14 +146,13 @@ function App () {
     if (!account || !pubkeys) {
       return
     }
-    const pubkey = pubkeys[account]
+    const pubkey = pubkeys.get(account)
     if (pubkey && coinType) {
       try {
         setSender(getSender(pubkey, coinType))
       } catch(err) {
         console.error(err)
-        delete pubkeys[account]
-        setPubkeys(pubkeys)
+        setPubkey(account) // set it's to undefineds
       }
     }
   }, [account, pubkeys, coinType])
@@ -162,7 +174,7 @@ function App () {
       setChainData(data)
     })
   }
-  React.useEffect(fetchData, [sender, client]) // ensures refresh if referential identity of library doesn't change across chainIds
+  React.useEffect(fetchData, [sender, client, maxBounty]) // ensures refresh if referential identity of library doesn't change across chainIds
 
   React.useEffect(() => {
     if (!client || !chainData || !accData || !accData.txrefs) {
@@ -229,7 +241,7 @@ function App () {
         }
       }
       console.log(`use the best UTXO found`)
-      const utxoWithMostRecipient = utxos.reduce((prev, current) => prev.recipients.length > current.recipients.length ? prev : current)
+      const utxoWithMostRecipient = utxos.reduce((prev, current) => (prev.recipients||[]).length > (current.recipients||[]).length ? prev : current)
       return utxoWithMostRecipient
 
       function isHit(txid, recipient) {
@@ -238,7 +250,7 @@ function App () {
         return BigInt(hash) % 32n == 0
       }
     }
-  }, [client, accData, chainData, maxBounty])
+  }, [client, accData, chainData, maxBounty, fee])
 
   React.useEffect(() => {
     if (!input || !accData || !input.recipients) {
@@ -277,7 +289,7 @@ function App () {
       await buildWithoutChange()
 
       console.error('size before adding change output', psbt.toBuffer().length)
-      const coinFee = parseInt(fee[coinType])
+      const coinFee = parseInt(fee.get(coinType))
       if (isNaN(coinFee)) {
         setBtx('invalid fee')
         return
@@ -353,14 +365,13 @@ function App () {
   function promptForKey(key) {
     const value = window.prompt(`API key for ${key}:`, apiKeys[key])
     if (value != null) {
-      apiKeys[key] = value
-      setApiKeys(apiKeys)
+      setApiKey(key, value)
     }
   }
 
   function doSend() {
     console.error('size after adding change output', btx.toBuffer().length)
-    const publicKey = Buffer.from(pubkeys[account].substring(2), 'hex')
+    const publicKey = Buffer.from(pubkeys.get(account).substring(2), 'hex')
     const signer = ECPair.fromPublicKey(publicKey, {compressed: true})
     signer.sign = hash => {
       return new Promise((resolve, reject) => {
@@ -402,12 +413,12 @@ function App () {
       <div className="spacing flex-container">
         <div className="flex-container">
           <span>API Keys:</span>
-          <span>&nbsp;{apiKeys.BlockCypher ? '✅' : '❌'}<button onClick={() => promptForKey('BlockCypher')}>BlockCypher</button></span>
+          <span>&nbsp;{apiKeys.get('BlockCypher') ? '✅' : '❌'}<button onClick={() => promptForKey('BlockCypher')}>BlockCypher</button></span>
           {/* <span>&nbsp;{apiKeys.CryptoAPIs ? '✅' : '❌'}<button onClick={() => promptForKey('CryptoAPIs')}>CryptoAPIs</button></span> */}
         </div>
       </div>
       <div className="spacing flex-container">
-        {!!pubkeys[account] && <span className="ellipsis">PublicKey: {pubkeys[account]}</span>}
+        {!!pubkeys.get(account) && <span className="ellipsis">PublicKey: {pubkeys.get(account)}</span>}
       </div>
       <div className="spacing flex-container">
         <div className="flex-container">
@@ -433,11 +444,10 @@ function App () {
         </div>
         <div className="flex-container">Fee:&nbsp;
           <input style={{width: 60}}
-            value={fee[coinType]} onChange={event=>{
+            value={fee.get(coinType)} onChange={event=>{
               const value = parseInt(event.target.value)
               if (value > 0) {
-                fee[coinType] = value
-                setFee(fee)
+                setFee(coinType, value)
               }
             }}
           />
