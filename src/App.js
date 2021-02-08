@@ -256,24 +256,43 @@ function App () {
     })
 
     const network = getNetwork(coinType)
-    const psbt = new Psbt({network});
 
-    let outValue = 0
-    // add custome transfer output here
-    // outValue += value
-
-    console.log('add the memo output')
-    const dataScript = payments.embed({data: [Buffer.from('endur.io', 'utf8')]})
-    psbt.addOutput({
-      script: dataScript.output,
-      value: 0,
+    build(inputs, recipients, sender.address).then(psbt => {
+      setBtx(psbt)
     })
 
-    console.log('build the mining outputs and required inputs')
-    build(psbt, inputs, recipients, sender.address, outValue)
+    async function build(inputs, recipients, sender, outValue = 0) {
+      const psbt = new Psbt({network});
 
-    async function build(psbt, inputs, recipients, sender, outValue = 0) {
-      let inValue = 0
+      console.log('add the memo output')
+      const dataScript = payments.embed({data: [Buffer.from('endur.io', 'utf8')]})
+      psbt.addOutput({
+        script: dataScript.output,
+        value: 0,
+      })
+
+        let inValue = 0
+      console.log('build the mining outputs and required inputs')
+  
+      await buildWithoutChange()
+
+      console.error('size before adding change output', psbt.toBuffer().length)
+      const coinFee = parseInt(fee[coinType])
+      if (isNaN(coinFee)) {
+        setBtx('invalid fee')
+        return
+      }
+      const changeValue = inValue - outValue - coinFee
+      if (changeValue <= 0) {
+        setBtx('insufficient fund')
+        return
+      }
+      psbt.addOutput({
+        address: sender,
+        value: changeValue,
+      })
+
+      return psbt
   
       async function buildWithoutChange() {
         let recIdx = 0
@@ -316,21 +335,6 @@ function App () {
         }
         console.log('utxo list exhausted')
       }
-  
-      await buildWithoutChange()
-
-      console.error('size before adding change output', psbt.toBuffer().length)
-      const change = inValue - outValue - fee[coinType]
-      if (change <= 0) {
-        setBtx('insufficient fund')
-        return
-      }
-      psbt.addOutput({
-        address: sender,
-        value: inValue - outValue - fee[coinType],
-      })
-  
-      setBtx(psbt)
     }
   
     function getNetwork (coinType) {
