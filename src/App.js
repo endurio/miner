@@ -390,7 +390,11 @@ function App () {
     }
   }
 
-  function doSend() {
+  function signAndSend() {
+    if (!!btx.data.inputs[0].finalScriptSig) {
+      return doSend()
+    }
+
     console.error('size after adding change output', btx.toBuffer().length)
     const publicKey = Buffer.from(pubkeys.get(account).substring(2), 'hex')
     const signer = ECPair.fromPublicKey(publicKey, {compressed: true})
@@ -403,13 +407,17 @@ function App () {
           .catch(reject)
       })
     }
-    btx.signAllInputsAsync(signer).then(() => {
+    return btx.signAllInputsAsync(signer).then(() => {
       console.error('size after finalize all inputs', btx.toBuffer().length)
       btx.finalizeAllInputs()
       setBtx(btx)
+      return doSend()
+    })
+
+    function doSend() {
       const tx = btx.extractTransaction()
       console.error(tx)
-    })
+    }
   }
 
   function getNetwork (coinType) {
@@ -512,7 +520,7 @@ function App () {
           />
         </div>
         {btxDisplay && <div className="flex-container">
-          <span><button onClick={() => doSend()}>Sign & Send</button></span>
+          <span><button onClick={() => signAndSend()}>Sign & Send</button></span>
         </div>}
       </div>
       {btxError && <div className='spacing flex-container'><span className="error">{btxError}</span></div>}
