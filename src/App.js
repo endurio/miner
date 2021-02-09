@@ -5,10 +5,10 @@ import './components/lds.css'
 import React from 'react'
 import Dropdown from 'react-dropdown'
 import { Web3ReactProvider, useWeb3React } from '@web3-react/core'
-import { getNetwork, Web3Provider } from '@ethersproject/providers'
+import { Web3Provider } from '@ethersproject/providers'
 import { Header } from './components/Header'
 import { useLocalStorage } from '@rehooks/local-storage'
-import { ethers, Signer, utils } from 'ethers'
+import { ethers, utils } from 'ethers'
 import ci from 'coininfo'
 import { ECPair, payments, Psbt, address, script } from 'bitcoinjs-lib'
 import blockcypher from './lib/blockcypher'
@@ -17,7 +17,7 @@ import { decShift } from './lib/big'
 const { keccak256 } = ethers.utils
 
 function getParameterByName(name, url = window.location.href) {
-  name = name.replace(/[\[\]]/g, '\\$&');
+  name = name.replace(/[[]]/g, '\\$&');
   var regex = new RegExp('[?&]' + name + '(=([^&#]*)|&|#|$)'),
       results = regex.exec(url);
   if (!results) return null;
@@ -205,7 +205,7 @@ function App () {
               blocks[n] = block
             }
             const block = blocks[n]
-            if (block.bits == 0x1d00ffff) {
+            if (block.bits === 0x1d00ffff) {
               continue    // skip testnet minimum difficulty blocks
             }
             for (const recipient of block.txids) {
@@ -219,7 +219,7 @@ function App () {
                     resolve (data)
                   })
                 })
-                if (tx.block_index == 0) {
+                if (tx.block_index === 0) {
                   continue    // skip the coinbase tx
                 }
                 // check for OP_RET in recipient tx
@@ -242,17 +242,17 @@ function App () {
           }
         }
       }
-      console.log(`use the best UTXO found`)
       const utxoWithMostRecipient = utxos.reduce((prev, current) => (prev.recipients||[]).length > (current.recipients||[]).length ? prev : current)
+      console.log('use the best UTXO found', utxoWithMostRecipient)
       return utxoWithMostRecipient
 
       function isHit(txid, recipient) {
         // use (recipient+txid).reverse() for LE(txid)+LE(recipient)
         const hash = keccak256(Buffer.from(recipient+txid, 'hex').reverse())
-        return BigInt(hash) % 32n == 0
+        return BigInt(hash) % 32n === 0n
       }
     }
-  }, [client, accData, chainData, maxBounty, fee])
+  }, [client, accData, chainData, maxBounty])
 
   React.useEffect(() => {
     if (!input || !accData || !input.recipients) {
@@ -269,9 +269,7 @@ function App () {
       }
     })
 
-    build(inputs, recipients, sender.address).then(psbt => {
-      setBtx(psbt)
-    })
+    build(inputs, recipients, sender.address).then(setBtx)
 
     async function build(inputs, recipients, sender, outValue = 0) {
       const psbt = new Psbt({network});
@@ -283,7 +281,7 @@ function App () {
         value: 0,
       })
 
-        let inValue = 0
+      let inValue = 0
       console.log('build the mining outputs and required inputs')
   
       await buildWithoutChange()
@@ -291,13 +289,11 @@ function App () {
       console.error('size before adding change output', psbt.toBuffer().length)
       const coinFee = parseInt(fee.get(coinType))
       if (isNaN(coinFee)) {
-        setBtx('invalid fee')
-        return
+        return 'invalid fee'
       }
       const changeValue = inValue - outValue - coinFee
       if (changeValue <= 0) {
-        setBtx('insufficient fund')
-        return
+        return 'insufficient fund'
       }
       psbt.addOutput({
         address: sender,
@@ -411,7 +407,7 @@ function App () {
         btxDisplay += (v ? ` with ${decShift(v, -8)}\n` : '\n')
       } else {
         const adr = address.fromOutputScript(s, network)
-        if (adr != sender.address) {
+        if (adr !== sender.address) {
           btxDisplay += `${decShift(v, -8)} → ${adr}\n`
         } else {
           btxDisplay += `${adr} ← ${decShift(v, -8)}`
@@ -476,7 +472,7 @@ function App () {
   )
 }
 
-export default function() {
+export default function InjectedApp() {
   return (
     <Web3ReactProvider getLibrary={getLibrary}>
       <App />
