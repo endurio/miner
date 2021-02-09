@@ -259,6 +259,12 @@ function App () {
       return
     }
 
+    const txFee = parseInt(fee.get(coinType))
+    if (isNaN(txFee)) {
+      setBtx('invalid fee')
+      return
+    }
+
     // construct the inputs list with the bounty input at the first
     const recipients = input.recipients
     const inputs = [input]
@@ -268,9 +274,41 @@ function App () {
       }
     })
 
-    build(inputs, recipients, sender.address).then(setBtx)
+    search(1, txFee).then(setBtx)
 
-    async function build(inputs, recipients, sender, outValue = 0) {
+    // binary search
+    async function search(start, end) {
+      if (start > end) return
+      const mid = Math.floor((start + end)/2)
+      const psbt = await build(mid)
+      if (isValid(psbt)) {
+        return await search(start, mid-1) || psbt
+      } else {
+        return await search(mid+1, end)
+      }
+
+      function isValid(psbt) {
+        if (!psbt || !psbt.data) {
+          return false
+        }
+        const tx = psbt.data.globalMap.unsignedTx.tx
+        const txSize = tx.toBuffer().length + 107 // at least 107 bytes signature
+        const inputSize = 32 + 4 + 107 + 4
+        // assume that the first output is OP_RET and the last is the coin change
+        for (let i = 1; i < tx.outs.length-1; ++i) {
+          const out = tx.outs[i]
+          const outputSize = out.script.length + 9
+          const minTxSize = 10 + inputSize + outputSize
+          const minAmount = Math.floor(minTxSize * txFee / txSize)
+          if (out.value < minAmount) {
+            return false
+          }
+        }
+        return true
+      }
+    }
+
+    async function build(bountyAmount, outValue = 0) {
       const psbt = new Psbt({network});
 
       console.log('add the memo output')
@@ -285,22 +323,18 @@ function App () {
   
       await buildWithoutChange()
 
-      console.error('size before adding change output', psbt.toBuffer().length)
-      const coinFee = parseInt(fee.get(coinType))
-      if (isNaN(coinFee)) {
-        return 'invalid fee'
-      }
-      const changeValue = inValue - outValue - coinFee
+      console.log('size before adding change output', psbt.toBuffer().length)
+      const changeValue = inValue - outValue - txFee
       if (changeValue <= 0) {
         return 'insufficient fund'
       }
       psbt.addOutput({
-        address: sender,
+        address: sender.address,
         value: changeValue,
       })
 
       return psbt
-  
+
       async function buildWithoutChange() {
         let recIdx = 0
         for (const input of inputs) {
@@ -320,12 +354,11 @@ function App () {
           // psbt.signInput(psbt.txInputs.length-1, ECPairs[sender])
           inValue += parseInt(input.value)
 
-          console.error(recipients)
           while (recIdx < recipients.length) {
             // const rec = recipients[recIdx % (recipients.length>>1)]     // duplicate recipient
             const rec = recipients[recIdx]
             const output = rec.outputs[rec.outputs.length-1]
-            const amount = 123 // BOUNTY[symbol] // TODO: calculate this
+            const amount = bountyAmount
             if (outValue + amount > inValue) {
               break;  // need more input
             }
