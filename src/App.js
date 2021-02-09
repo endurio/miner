@@ -263,7 +263,6 @@ function App () {
     const recipients = input.recipients
     const inputs = [input]
     accData.txrefs.forEach(o => {
-      delete o.recipients
       if (o.txid !== input.txid || o.vout !== input.vout) {
         inputs.push(o)
       }
@@ -344,7 +343,7 @@ function App () {
         console.log('utxo list exhausted')
       }
     }
-  }, [sender, accData, input, fee, coinType, network])
+  }, [sender, accData, input, fee, coinType, network, client])
 
   function promptForKey(key) {
     const value = window.prompt(`API key for ${key}:`, apiKeys[key])
