@@ -99,6 +99,7 @@ function App () {
   const [chainData, setChainData] = React.useState()
   const [input, setInput] = React.useState()
   const [btx, setBtx] = React.useState()
+  const [xmine, setXmine] = usePersistentMap('xmine', {'BTC': 1, 'BTC-TEST': 4})
 
   React.useEffect(() => setNetwork(getNetwork(coinType)), [coinType])
 
@@ -312,7 +313,11 @@ function App () {
       const psbt = new Psbt({network});
 
       console.log('add the memo output')
-      const dataScript = payments.embed({data: [Buffer.from('endur.io', 'utf8')]})
+      let memo = 'endur.io'
+      if (xmine.get(coinType) > 1) {
+        memo += ' x' + xmine.get(coinType)
+      }
+      const dataScript = payments.embed({data: [Buffer.from(memo, 'utf8')]})
       psbt.addOutput({
         script: dataScript.output,
         value: 0,
@@ -376,7 +381,7 @@ function App () {
         console.log('utxo list exhausted')
       }
     }
-  }, [sender, accData, input, fee, coinType, network, client])
+  }, [sender, accData, input, fee, coinType, network, client, xmine])
 
   function promptForKey(key) {
     const value = window.prompt(`API key for ${key}:`, apiKeys[key])
@@ -474,6 +479,18 @@ function App () {
         {hasSummary && <span>Sender Balance: {decShift(accData.balance, -8)}</span>}
       </div>
       <div className="spacing flex-container">
+        <div className="flex-container">X-Mine:&nbsp;
+          <input maxLength={3} style={{width: 30}}
+            value={xmine.get(coinType)} onChange={event=>{
+              const value = parseInt(event.target.value)
+              if (isNaN(value) || value <= 0) {
+                setXmine(coinType, 1)
+              } else {
+                setXmine(coinType, event.target.value)
+              }
+            }}
+          />
+        </div>
         <div className="flex-container">Max Bounty:&nbsp;
           <input maxLength={1} style={{width: 10}}
             value={maxBounty} onChange={event=>{
