@@ -55,8 +55,9 @@ function BlockCypher(opts) {
     if (chainInfo) {
       const blockTimestamp = new Date(chainInfo.time)
       const duration = new Date() - blockTimestamp
-      const seconds = Math.floor(duration / 1000)
-      if (seconds < 120) {
+      const seconds = duration / 1000
+      const mins = seconds / 60
+      if (mins < 10) {
         return callback(undefined, chainInfo)
       }
     }

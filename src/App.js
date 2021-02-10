@@ -190,6 +190,7 @@ function App () {
     searchForBountyInput(accData.txrefs).then(setInput)
 
     async function searchForBountyInput(utxos, maxBlocks = 6) {
+      utxos = [(utxos||[])[0]]  // only use the first UTXO for the blockcypher limit
       for (const utxo of utxos) {
         utxo.recipients = []
         for (let n = chainData.height; n > chainData.height-maxBlocks; --n) {
