@@ -172,7 +172,7 @@ function App () {
       })
     }
     setChainData(undefined)
-    client.get('', (err, data) => {
+    client.getChainInfo((err, data) => {
       if (err) return console.error(err)
       setChainData(data)
     })
