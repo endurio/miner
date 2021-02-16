@@ -84,6 +84,10 @@ function usePersistent(key, defaultValue) {
 }
 
 function App () {
+  // cache for re-iterate
+  const cacheBlock = {}
+  const cacheTxHex = {}
+
   const { account, library } = useWeb3React()
   const [apiKeys, setApiKey] = usePersistentMap('apiKeys')
   const [pubkeys, setPubkey] = usePersistentMap('pubkeys')
@@ -101,6 +105,8 @@ function App () {
   const [xmine, setXmine] = usePersistentMap('xmine', {'BTC': 1, 'BTC-TEST': 4})
   const [chainHead, setChainHead] = React.useState()
   const [senderBalance, setSenderBalance] = React.useState()
+  const [utxos, setUTXOs] = React.useState()
+  const [buildingTimestamp, setBuildingTimestamp] = React.useState(0)
 
   React.useEffect(() => setNetwork(getNetwork(coinType)), [coinType])
 
@@ -179,55 +185,57 @@ function App () {
       setChainHead(data)
     })
   }
-  React.useEffect(fetchData, [sender, client, maxBounty]) // ensures refresh if referential identity of library doesn't change across chainIds
+  React.useEffect(fetchData, [sender, client]) // ensures refresh if referential identity of library doesn't change across chainIds
 
   React.useEffect(() => {
-    if (!client || !chainHead || !accData || !accData.txrefs) {
+    if (!chainHead || !sender) {
+      return
+    }
+    client.get(`/unspent?active=${sender.address}`, (err, data) => {
+      if (err) {
+        return console.error(err)
+      }
+      setUTXOs(data.unspent_outputs)
+    })
+  }, [chainHead, sender, client])
+
+  React.useEffect(() => {
+    if (!client || !chainHead || !utxos) {
       return
     }
 
-    // cache for re-iterate
-    const blocks = {}
-
-    searchForBountyInput(accData.txrefs).then(setInput)
+    searchForBountyInput(utxos).then(setInput)
 
     async function searchForBountyInput(utxos, maxBlocks = 6) {
-      utxos = [(utxos||[])[0]]  // only use the first UTXO for the blockcypher limit
+      // utxos = [(utxos||[])[0]]  // only use the first UTXO for the blockcypher limit
       for (const utxo of utxos) {
         utxo.recipients = []
-        for (let n = chainHead.height; n > chainHead.height-maxBlocks; --n) {
+        let n = chainHead.hash
+        for (let i = 0; i < maxBlocks; ++i) {
+        // for (let n = chainHead.height; n > chainHead.height-maxBlocks; --n) {
           try {
-            if (!blocks[n]) {
+            if (!cacheBlock[n]) {
               const block = await new Promise((resolve, reject) => {
-                // blockcypher limits 500 tx per block results, we only use the first 500 txs of the block for simplicity
-                // ?txstart=0&limit=500
-                client.get(`/blocks/${n}`, (err, data) => {
+                client.get(`/rawblock/${n}`, (err, data) => {
                   if (err) return reject(err)
                   resolve (data)
                 })
               })
-              blocks[n] = block
+              block.tx.shift()  // remove the coinbase tx
+              cacheBlock[n] = block
             }
-            const block = blocks[n]
+            const block = cacheBlock[n]
+            n = block.prev_block
             if (block.bits === 0x1d00ffff) {
               continue    // skip testnet minimum difficulty blocks
             }
-            for (const recipient of block.txids) {
-              if (!isHit(utxo.tx_hash, recipient)) {
+            for (const tx of block.tx) {
+              if (!isHit(utxo.tx_hash_big_endian, tx.hash)) {
                 continue
               }
               try {
-                const tx = await new Promise((resolve, reject) => {
-                  client.get(`/txs/${recipient}`, (err, data) => {
-                    if (err) return reject(err)
-                    resolve (data)
-                  })
-                })
-                if (tx.block_index === 0) {
-                  continue    // skip the coinbase tx
-                }
                 // check for OP_RET in recipient tx
-                const hasOpRet = tx.outputs.some(o => o.script.startsWith('6a'))   // OP_RET = 0x6a
+                const hasOpRet = tx.out.some(o => o.script.startsWith('6a'))   // OP_RET = 0x6a
                 if (hasOpRet) {
                   continue
                 }
@@ -256,10 +264,10 @@ function App () {
         return BigInt(hash) % 32n === 0n
       }
     }
-  }, [client, accData, chainHead, maxBounty])
+  }, [utxos, maxBounty])
 
   React.useEffect(() => {
-    if (!input || !accData || !input.recipients) {
+    if (!input || !input.recipients) {
       return
     }
 
@@ -272,7 +280,7 @@ function App () {
     // construct the inputs list with the bounty input at the first
     const recipients = input.recipients
     const inputs = [input]
-    accData.txrefs.forEach(o => {
+    utxos.forEach(o => {
       if (o.txid !== input.txid || o.vout !== input.vout) {
         inputs.push(o)
       }
@@ -346,18 +354,22 @@ function App () {
       async function buildWithoutChange() {
         let recIdx = 0
         for (const input of inputs) {
-          const tx = await new Promise((resolve, reject) => {
-            client.get(`/txs/${input.tx_hash}?includeHex=true`, (err, data) => {
-              if (err) return reject(err)
-              resolve (data)
+          const txHash = input.tx_hash_big_endian
+          if (!cacheTxHex[txHash]) {
+            cacheTxHex[txHash] = await new Promise((resolve, reject) => {
+              client.get(`/rawtx/${txHash}?format=hex`, (err, data) => {
+                if (err) return reject(err)
+                resolve (data)
+              })
             })
-          })
+          }
+          const txHex = cacheTxHex[txHash]
 
           psbt.addInput({
             hash: input.tx_hash,
             index: input.tx_output_n,
             // non-segwit inputs now require passing the whole previous tx as Buffer
-            nonWitnessUtxo: Buffer.from(tx.hex, 'hex'),
+            nonWitnessUtxo: Buffer.from(txHex, 'hex'),
           })
           // psbt.signInput(psbt.txInputs.length-1, ECPairs[sender])
           inValue += parseInt(input.value)
@@ -365,7 +377,7 @@ function App () {
           while (recIdx < recipients.length) {
             // const rec = recipients[recIdx % (recipients.length>>1)]     // duplicate recipient
             const rec = recipients[recIdx]
-            const output = rec.outputs[rec.outputs.length-1]
+            const output = rec.out[rec.out.length-1]
             const amount = bountyAmount
             if (outValue + amount > inValue) {
               break;  // need more input
@@ -384,7 +396,7 @@ function App () {
         console.log('utxo list exhausted')
       }
     }
-  }, [sender, accData, input, fee, coinType, network, client, xmine])
+  }, [input, fee, xmine])
 
   function promptForKey(key) {
     const value = window.prompt(`API key for ${key}:`, apiKeys[key])
