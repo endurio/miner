@@ -11,7 +11,7 @@ import { useLocalStorage } from '@rehooks/local-storage'
 import { ethers, utils } from 'ethers'
 import ci from 'coininfo'
 import { ECPair, payments, Psbt, address, script } from 'bitcoinjs-lib'
-import blockcypher from './lib/blockcypher'
+import bcinfo from './lib/bcinfo'
 import { decShift } from './lib/big'
 
 const { keccak256 } = ethers.utils
@@ -96,18 +96,18 @@ function App () {
   const [fee, setFee] = usePersistentMap('fee', {'BTC': 1306, 'BTC-TEST': 999})
   const [client, setClient] = React.useState()
   const [accData, setAccData] = React.useState()
-  const [chainData, setChainData] = React.useState()
   const [input, setInput] = React.useState()
   const [btx, setBtx] = React.useState()
   const [xmine, setXmine] = usePersistentMap('xmine', {'BTC': 1, 'BTC-TEST': 4})
+  const [chainHead, setChainHead] = React.useState()
+  const [senderBalance, setSenderBalance] = React.useState()
 
   React.useEffect(() => setNetwork(getNetwork(coinType)), [coinType])
 
   React.useEffect(() => {
     const network = coinType === 'BTC' ? 'mainnet' : 'testnet'
-    const client = blockcypher({
+    const client = bcinfo({
       inBrowser: true,
-      key: apiKeys.get('BlockCypher'),
       network,
     })
     setClient(client)
@@ -165,22 +165,24 @@ function App () {
       return
     }
     if (!!sender) {
-      setAccData(undefined)
-      client.get(`/addrs/${sender.address}?unspentOnly=true`, (err, data) => {
+      setSenderBalance(undefined)
+      client.query(`/addressbalance/${sender.address}?confirmations=0`, (err, data) => {
         if (err) return console.error(err)
-        setAccData(data)
+        setSenderBalance(Number(data))
       })
     }
-    setChainData(undefined)
-    client.getChainInfo((err, data) => {
-      if (err) return console.error(err)
-      setChainData(data)
+    client.get('/latestblock', (err, data) => {
+      if (err) {
+        console.error(err)
+        return setChainHead(undefined)
+      }
+      setChainHead(data)
     })
   }
   React.useEffect(fetchData, [sender, client, maxBounty]) // ensures refresh if referential identity of library doesn't change across chainIds
 
   React.useEffect(() => {
-    if (!client || !chainData || !accData || !accData.txrefs) {
+    if (!client || !chainHead || !accData || !accData.txrefs) {
       return
     }
 
@@ -193,7 +195,7 @@ function App () {
       utxos = [(utxos||[])[0]]  // only use the first UTXO for the blockcypher limit
       for (const utxo of utxos) {
         utxo.recipients = []
-        for (let n = chainData.height; n > chainData.height-maxBlocks; --n) {
+        for (let n = chainHead.height; n > chainHead.height-maxBlocks; --n) {
           try {
             if (!blocks[n]) {
               const block = await new Promise((resolve, reject) => {
@@ -254,7 +256,7 @@ function App () {
         return BigInt(hash) % 32n === 0n
       }
     }
-  }, [client, accData, chainData, maxBounty])
+  }, [client, accData, chainHead, maxBounty])
 
   React.useEffect(() => {
     if (!input || !accData || !input.recipients) {
@@ -434,9 +436,7 @@ function App () {
   }
 
   // statuses
-  const isLoading = !accData
-  const hasError = accData && accData.err
-  const hasSummary = accData && !accData.err
+  const isLoading = isNaN(senderBalance)
 
   if (typeof btx === 'string') {
     var btxError = btx
@@ -484,8 +484,7 @@ function App () {
         <div>
           {isLoading ? <div className="lds-dual-ring"></div> : <button onClick={fetchData}>Fetch</button>}
         </div>
-        {hasError && <span className="error">{accData.err.toString()}</span>}
-        {hasSummary && <span>Sender Balance: {decShift(accData.balance, -8)}</span>}
+        {!isLoading && <span>Sender Balance: {decShift(senderBalance, -8)}</span>}
       </div>
       <div className="spacing flex-container">
         <div className="flex-container">X-Mine:&nbsp;
