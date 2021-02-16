@@ -11,8 +11,10 @@ import { useLocalStorage } from '@rehooks/local-storage'
 import { ethers, utils } from 'ethers'
 import ci from 'coininfo'
 import { ECPair, payments, Psbt, address, script } from 'bitcoinjs-lib'
+import blockcypher from './lib/blockcypher'
 import bcinfo from './lib/bcinfo'
 import { decShift } from './lib/big'
+import bip66 from 'bip66'
 
 const { keccak256 } = ethers.utils
 
@@ -365,7 +367,7 @@ function App () {
           const txHex = cacheTxHex[txHash]
 
           psbt.addInput({
-            hash: input.tx_hash_big_endian,
+            hash: txHash,
             index: input.tx_output_n,
             // non-segwit inputs now require passing the whole previous tx as Buffer
             nonWitnessUtxo: Buffer.from(txHex, 'hex'),
@@ -405,20 +407,44 @@ function App () {
   }
 
   function signAndSend() {
+    console.error(btx.data.globalMap.unsignedTx.tx.toHex())
+    return
+
     if (!!btx.data.inputs[0].finalScriptSig) {
       return doSend()
     }
 
     const publicKey = Buffer.from(pubkeys.get(account).substring(2), 'hex')
-    const signer = ECPair.fromPublicKey(publicKey, {compressed: true})
-    signer.sign = hash => {
-      return new Promise((resolve, reject) => {
-        return library
-          .getSigner(account)
-          .signMessage(hash)
-          .then(signature => resolve(Buffer.from(signature.substr(2, 128), 'hex')))
-          .catch(reject)
-      })
+    const ecPair = ECPair.fromPublicKey(publicKey, {compressed: true, network})
+    const signer = {
+      network,
+      publicKey: ecPair.publicKey,
+      sign: async (hash) => {
+        return new Promise((resolve, reject) => {
+          return library
+            .getSigner(account)
+            .signMessage(hash)
+            .then(signature => {
+              try {
+                console.error(signature)
+                const sig = Buffer.from(signature.substr(2), 'hex')
+                const r = sig.slice(0, 32)
+                const s = sig.slice(32, 64)
+                console.error(r.toString('hex'))
+                console.error(s.toString('hex'))
+                // const der = bip66.encode(r, s)
+                const der = Buffer.concat([r, s])
+                console.error(der.toString('hex'))
+                return resolve(der)
+              }
+              catch(err) {
+                console.error(err)
+                return reject(err)
+              }
+            })
+            .catch(reject)
+        })  
+      }
     }
     return btx.signAllInputsAsync(signer).then(() => {
       btx.finalizeAllInputs()
@@ -429,7 +455,16 @@ function App () {
 
     function doSend() {
       const tx = btx.extractTransaction()
-      console.error(tx)
+      console.error('sending signed tx', tx, tx.ins[0].hash.toString('hex'), tx.toHex())
+      const network = coinType === 'BTC' ? 'mainnet' : 'testnet'
+      const wallet = blockcypher({
+        inBrowser: true,
+        key: apiKeys.get('BlockCypher'),
+        network,
+      })
+      wallet.post('/txs/push', {tx: tx.toHex()}, (tx, err) => {
+        console.error(tx, err)
+      })
     }
   }
 
