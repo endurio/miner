@@ -365,7 +365,7 @@ function App () {
           const txHex = cacheTxHex[txHash]
 
           psbt.addInput({
-            hash: input.tx_hash,
+            hash: input.tx_hash_big_endian,
             index: input.tx_output_n,
             // non-segwit inputs now require passing the whole previous tx as Buffer
             nonWitnessUtxo: Buffer.from(txHex, 'hex'),
@@ -425,6 +425,7 @@ function App () {
       setBtx(btx)
       return doSend()
     })
+    .catch(console.error)
 
     function doSend() {
       const tx = btx.extractTransaction()
