@@ -323,7 +323,7 @@ function App () {
     async function build(bountyAmount, outValue = 0) {
       const psbt = new Psbt({network});
 
-      console.log('add the memo output')
+      // add the memo output
       let memo = 'endur.io'
       if (xmine.get(coinType) > 1) {
         memo += ' x' + xmine.get(coinType)
@@ -335,11 +335,10 @@ function App () {
       })
 
       let inValue = 0
-      console.log('build the mining outputs and required inputs')
+      // build the mining outputs and required inputs
   
       await buildWithoutChange()
 
-      console.log('size before adding change output', psbt.toBuffer().length)
       const changeValue = inValue - outValue - txFee
       if (changeValue <= 0) {
         return 'insufficient fund'
@@ -388,12 +387,12 @@ function App () {
               value: amount,
             })
             if (++recIdx >= recipients.length) {
-              console.log('recipients list exhausted')
+              // recipients list exhausted
               return
             }
           }
         }
-        console.log('utxo list exhausted')
+        // utxo list exhausted
       }
     }
   }, [input, fee, xmine])
@@ -410,7 +409,6 @@ function App () {
       return doSend()
     }
 
-    console.error('size after adding change output', btx.toBuffer().length)
     const publicKey = Buffer.from(pubkeys.get(account).substring(2), 'hex')
     const signer = ECPair.fromPublicKey(publicKey, {compressed: true})
     signer.sign = hash => {
@@ -423,7 +421,6 @@ function App () {
       })
     }
     return btx.signAllInputsAsync(signer).then(() => {
-      console.error('size after finalize all inputs', btx.toBuffer().length)
       btx.finalizeAllInputs()
       setBtx(btx)
       return doSend()
