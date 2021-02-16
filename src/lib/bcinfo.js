@@ -91,9 +91,14 @@ function BcInfo(opts) {
         if (body) {
           const hashstamp = localStorage.getItem(ITEM_HASH_STORAGE_KEY)
           if (hashstamp && hashstamp == latestHash) {
-            const res = JSON.parse(body)
-            console.log("cache.return", url)
-            return callback(undefined, res);
+            try {
+              const res = JSON.parse(body)
+              console.log("cache.return", url)
+              return callback(undefined, res);
+            } catch(err) {
+              console.log("error parsing data recieved from cache");
+              return callback(undefined, body)
+            }
           }
         }
         return _getFromURL(url, (err, body) => {
@@ -103,13 +108,12 @@ function BcInfo(opts) {
             try {
               const res = JSON.parse(body)
               console.log("cache.set", url)
-              localStorage.setItem(ITEM_STORAGE_KEY, body)
               localStorage.setItem(ITEM_HASH_STORAGE_KEY, latestHash)
+              localStorage.setItem(ITEM_STORAGE_KEY, body)
               return callback(undefined, res);
             }
             catch (err) {
               console.log("error parsing data recieved from blockchain.info");
-              return callback(err, undefined);
             }
           }
           return callback(err, body)
