@@ -8,6 +8,7 @@ import { useLocalStorage } from '@rehooks/local-storage'
 import { ethers, utils } from 'ethers'
 import ci from 'coininfo'
 import { ECPair, payments, Psbt, address, script } from 'bitcoinjs-lib'
+import blockcypher from './lib/blockcypher'
 import bcinfo from './lib/bcinfo'
 import { decShift } from './lib/big'
 
@@ -152,7 +153,7 @@ function App () {
   }, [provider, miner])
 
   function fetchData() {
-    if (!apiKeys || !client) {
+    if (!client) {
       return
     }
     if (!!sender) {
@@ -350,7 +351,7 @@ function App () {
           const txHex = cacheTxHex[txHash]
 
           psbt.addInput({
-            hash: input.tx_hash_big_endian,
+            hash: txHash,
             index: input.tx_output_n,
             // non-segwit inputs now require passing the whole previous tx as Buffer
             nonWitnessUtxo: Buffer.from(txHex, 'hex'),
@@ -383,7 +384,7 @@ function App () {
   }, [input, fee, xmine])
 
   function promptForKey(key) {
-    const value = window.prompt(`API key for ${key}:`, apiKeys[key])
+    const value = window.prompt(`API key for ${key}:`, apiKeys.get(key))
     if (value != null) {
       setApiKey(key, value)
     }
@@ -397,7 +398,7 @@ function App () {
     }
   }
 
-  function signAndSend() {
+  function sendTx() {
     if (!btx.data.inputs[0].finalScriptSig) {
       const signer = ECPair.fromPrivateKey(Buffer.from(privateKey, 'hex'), {network: getNetwork(coinType)})
       btx.signAllInputs(signer)
@@ -406,7 +407,21 @@ function App () {
     }
 
     const tx = btx.extractTransaction()
-    console.error(tx)
+    console.log('sending signed tx', tx)
+    const network = coinType === 'BTC' ? 'mainnet' : 'testnet'
+    const wallet = blockcypher({
+      inBrowser: true,
+      key: apiKeys.get('BlockCypher'),
+      network,
+    })
+    wallet.post('/txs/push', {tx: tx.toHex()}, (err, tx) => {
+      console.error(err, tx)
+      if (tx.error) {
+        console.error(tx.error)
+      } else {
+        console.log('tx successfully sent', tx)
+      }
+    })
   }
 
   function getNetwork (coinType) {
@@ -512,8 +527,8 @@ function App () {
             }}
           />
         </div>
-        {btxDisplay && <div className="flex-container">
-          <span><button onClick={() => signAndSend()}>Sign & Send</button></span>
+        {(!!apiKeys.get('BlockCypher') && !!btxDisplay) && <div className="flex-container">
+          <span><button onClick={() => sendTx()}>Send</button></span>
         </div>}
       </div>
       {btxError && <div className='spacing flex-container'><span className="error">{btxError}</span></div>}
