@@ -78,8 +78,8 @@ function BcInfo(opts) {
       
       function doFetch(latestHash) {
         if (!latestHash) {
-          console.error('latest hash not available')
-          return
+          console.error('chain head unavailable')
+          return callback('chain head unavailable', undefined)
         }
         const url = _constructUrl(path)
 
