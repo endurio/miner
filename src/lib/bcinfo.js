@@ -70,7 +70,7 @@ function BcInfo(opts) {
       const url = _constructUrl(path)
       _getFromURL(url, callback)
     },
-    get(path, callback) {
+    get(path, callback, force) {
       if (!this.latestHash) {
         return this.queryLatestHash((err, latestHash) => doFetch(latestHash))
       }
@@ -86,18 +86,20 @@ function BcInfo(opts) {
         const STORAGE_KEY = 'bcinfo-cache'
         const ITEM_STORAGE_KEY = `${STORAGE_KEY}-${_hashCode(url)}`
         const ITEM_HASH_STORAGE_KEY = `${ITEM_STORAGE_KEY}-hashstamp`
-        const body = localStorage.getItem(ITEM_STORAGE_KEY)
 
-        if (body) {
-          const hashstamp = localStorage.getItem(ITEM_HASH_STORAGE_KEY)
-          if (hashstamp && hashstamp == latestHash) {
-            try {
-              const res = JSON.parse(body)
-              console.log("cache.return", url)
-              return callback(undefined, res);
-            } catch(err) {
-              console.log("error parsing data recieved from cache");
-              return callback(undefined, body)
+        if (!force) {
+          const body = localStorage.getItem(ITEM_STORAGE_KEY)
+          if (body) {
+            const hashstamp = localStorage.getItem(ITEM_HASH_STORAGE_KEY)
+            if (hashstamp && hashstamp == latestHash) {
+              try {
+                const res = JSON.parse(body)
+                console.log("cache.return", url)
+                return callback(undefined, res);
+              } catch(err) {
+                console.log("error parsing data recieved from cache");
+                return callback(undefined, body)
+              }
             }
           }
         }

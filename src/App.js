@@ -173,8 +173,8 @@ function App () {
   }
   React.useEffect(fetchData, [sender, client]) // ensures refresh if referential identity of library doesn't change across chainIds
 
-  React.useEffect(() => {
-    if (!chainHead || !sender) {
+  function fetchUnspent(force) {
+    if (!sender) {
       return
     }
     client.get(`/unspent?active=${sender.address}`, (err, data) => {
@@ -182,7 +182,12 @@ function App () {
         return console.error(err)
       }
       setUTXOs(data.unspent_outputs)
-    })
+    }, force)
+  }
+  React.useEffect(() => {
+    if (!!chainHead) {
+      fetchUnspent()
+    }
   }, [chainHead, sender, client])
 
   React.useEffect(() => {
@@ -414,13 +419,16 @@ function App () {
       key: apiKeys.get('BlockCypher'),
       network,
     })
-    wallet.post('/txs/push', {tx: tx.toHex()}, (err, tx) => {
-      console.error(err, tx)
-      if (tx.error) {
-        console.error(tx.error)
+    wallet.post('/txs/push', {tx: tx.toHex()}, (success, res) => {
+      console.error(success, res)
+      if (res.error) {
+        console.error(res.error)
       } else {
-        console.log('tx successfully sent', tx)
+        console.log('tx successfully sent', res)
+        const coinPath = coinType === 'BTC' ? 'BTC' : 'BTCTEST'
+        console.error('open', `https://sochain.com/tx/${coinPath}/`)
       }
+      fetchUnspent(true)
     })
   }
 
