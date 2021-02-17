@@ -419,14 +419,15 @@ function App () {
       key: apiKeys.get('BlockCypher'),
       network,
     })
-    wallet.post('/txs/push', {tx: tx.toHex()}, (success, res) => {
-      console.error(success, res)
+    wallet.post('/txs/push', {tx: tx.toHex()}, (unknown, res) => {
+      console.error(unknown, res)
       if (res.error) {
         console.error(res.error)
       } else {
-        console.log('tx successfully sent', res)
-        const coinPath = coinType === 'BTC' ? 'BTC' : 'BTCTEST'
-        console.error('open', `https://sochain.com/tx/${coinPath}/`)
+        console.log('tx successfully sent', res.tx)
+        const coinPath = coinType === 'BTC' ? 'btc' : 'btc-testnet'
+        const url = `https://live.blockcypher.com/${coinPath}/tx/${res.tx.hash}/`
+        window.open(url, '_blank')
       }
       fetchUnspent(true)
     })
