@@ -181,7 +181,27 @@ function App () {
       if (err) {
         return console.error(err)
       }
+      function shouldUpdate(data) {
+        if (!data || !data.unspent_outputs) {
+          return false
+        }
+        if (!utxos) {
+          return true
+        }
+        const newLen = data.unspent_outputs.length
+        if (newLen == utxos.length) {
+          if (newLen == 0) {
+            return false  // empty
+          }
+          if (data.unspent_outputs[newLen-1].tx_hash == utxos[utxos.length-1].tx_hash) {
+            return false  // no change
+          }
+        }
+        return true
+      }
+      if (shouldUpdate(data)) {
       setUTXOs(data.unspent_outputs)
+      }
     }, force)
   }
   React.useEffect(() => {
