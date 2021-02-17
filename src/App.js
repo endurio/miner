@@ -4,9 +4,6 @@ import './App.css'
 import './components/lds.css'
 import React from 'react'
 import Dropdown from 'react-dropdown'
-import { Web3ReactProvider, useWeb3React } from '@web3-react/core'
-import { Web3Provider } from '@ethersproject/providers'
-import { Header } from './components/Header'
 import { useLocalStorage } from '@rehooks/local-storage'
 import { ethers, utils } from 'ethers'
 import ci from 'coininfo'
@@ -14,7 +11,7 @@ import { ECPair, payments, Psbt, address, script } from 'bitcoinjs-lib'
 import bcinfo from './lib/bcinfo'
 import { decShift } from './lib/big'
 
-const { keccak256 } = ethers.utils
+const { keccak256, computeAddress } = ethers.utils
 
 function getParameterByName(name, url = window.location.href) {
   name = name.replace(/[[]]/g, '\\$&');
@@ -30,13 +27,7 @@ if (getParameterByName('clear') != null) {
   window.location.replace('/')
 }
 
-function getLibrary(provider) {
-  const library = new Web3Provider(provider)
-  library.pollingInterval = 12000
-  return library
-}
-
-function getSender(pubkey, coinType) {
+function getSender(privateKey, coinType) {
   const coinInfo = ci(coinType)
   const network = {
     messagePrefix: coinInfo.messagePrefix,
@@ -46,7 +37,7 @@ function getSender(pubkey, coinType) {
     scriptHash: coinInfo.versions.scripthash,
     wif: coinInfo.versions.private,
   }
-  const keyPair = ECPair.fromPublicKey(Buffer.from(pubkey.substring(2), 'hex'))
+  const keyPair = ECPair.fromPrivateKey(Buffer.from(privateKey, 'hex'))
   return payments.p2pkh({pubkey: keyPair.publicKey, network})
 }
 
@@ -88,28 +79,37 @@ function App () {
   const cacheBlock = {}
   const cacheTxHex = {}
 
-  const { account, library } = useWeb3React()
+  const [privateKey, setPrivateKey] = usePersistent('privateKey')
   const [apiKeys, setApiKey] = usePersistentMap('apiKeys')
-  const [pubkeys, setPubkey] = usePersistentMap('pubkeys')
-  const options = ['BTC', 'BTC-TEST']
-  const defaultOption = options[1]
-  const [coinType, setCoinType] = usePersistent('cointype', defaultOption)
-  const [network, setNetwork] = React.useState(getNetwork(coinType))
+  const coinTypes = ['BTC', 'BTC-TEST']
+  const [coinType, setCoinType] = usePersistent('cointype', coinTypes[1])
+  const networks = ['Ethereum', 'Rinkeby']
+  const [network, setNetwork] = usePersistent('network', networks[1])
+  const [miner, setMiner] = React.useState()
   const [sender, setSender] = React.useState()
   const [maxBounty, setMaxBounty] = usePersistent('maxBounty', 8)
   const [fee, setFee] = usePersistentMap('fee', {'BTC': 1306, 'BTC-TEST': 999})
   const [client, setClient] = React.useState()
-  const [accData, setAccData] = React.useState()
   const [input, setInput] = React.useState()
   const [btx, setBtx] = React.useState()
   const [xmine, setXmine] = usePersistentMap('xmine', {'BTC': 1, 'BTC-TEST': 4})
   const [chainHead, setChainHead] = React.useState()
   const [senderBalance, setSenderBalance] = React.useState()
   const [utxos, setUTXOs] = React.useState()
-  const [buildingTimestamp, setBuildingTimestamp] = React.useState(0)
+  const [provider, setProvider] = React.useState()
+  const [minerBalance, setMinerBalance] = React.useState()
 
-  React.useEffect(() => setNetwork(getNetwork(coinType)), [coinType])
+  // ethereum provider
+  React.useEffect(() => {
+    if (!apiKeys.get('infura')) {
+      return
+    }
+    const subnet = network == 'Ethereum' ? 'mainet' : 'rinkeby'
+    const provider = new ethers.providers.JsonRpcProvider(`https://${subnet}.infura.io/v3/${apiKeys.get('infura')}`);
+    setProvider(provider)
+  }, [network, apiKeys])
 
+  // bitcoin client
   React.useEffect(() => {
     const network = coinType === 'BTC' ? 'mainnet' : 'testnet'
     const client = bcinfo({
@@ -119,52 +119,37 @@ function App () {
     setClient(client)
   }, [coinType, apiKeys])
 
-  // public key
+  // account (a.k.a miner)
   React.useEffect(() => {
-    if (!!account && !!library) {
-      if (pubkeys.get(account)) {
-        return () => {}
-      }
-      let stale = false
-
-      const message = 'Please sign this message to provide the public key of your miner account.'
-      const messageHash = ethers.utils.hashMessage(message)
-
-      library
-        .getSigner(account)
-        .signMessage(message)
-        .then(signature => {
-          if (!stale) {
-            const pk = ethers.utils.recoverPublicKey(messageHash, signature)
-            const address = ethers.utils.computeAddress(pk)
-            setPubkey(address, pk)
-          }
-        })
-        .catch(error => {
-          window.alert('Failure!' + (error && error.message ? `\n\n${error.message}` : ''))
-        })
-
-      return () => {
-        stale = true
-      }
-    }
-  }, [account, library]) // ensures refresh if referential identity of library doesn't change across chainIds
-
-  // sender
-  React.useEffect(() => {
-    if (!account || !pubkeys) {
+    if (!privateKey) {
       return
     }
-    const pubkey = pubkeys.get(account)
-    if (pubkey && coinType) {
-      try {
-        setSender(getSender(pubkey, coinType))
-      } catch(err) {
-        console.error(err)
-        setPubkey(account) // set it's to undefineds
-      }
+    try {
+      const account = computeAddress(Buffer.from(privateKey, 'hex'))
+      setMiner(account)
+    } catch(err) {
+      console.error(err)
     }
-  }, [account, pubkeys, coinType])
+  }, [privateKey])
+  
+  // sender
+  React.useEffect(() => {
+    if (!privateKey || !coinType) {
+      return
+    }
+    try {
+      setSender(getSender(privateKey, coinType))
+    } catch(err) {
+      console.error(err)
+    }
+  }, [privateKey, coinType])
+
+  // miner balance
+  React.useEffect(() => {
+    if (miner && provider) {
+      provider.getBalance(miner).then(setMinerBalance)
+    }
+  }, [provider, miner])
 
   function fetchData() {
     if (!apiKeys || !client) {
@@ -321,7 +306,7 @@ function App () {
     }
 
     async function build(bountyAmount, outValue = 0) {
-      const psbt = new Psbt({network});
+      const psbt = new Psbt({network: getNetwork(coinType)});
 
       // add the memo output
       let memo = 'endur.io'
@@ -404,33 +389,24 @@ function App () {
     }
   }
 
-  function signAndSend() {
-    if (!!btx.data.inputs[0].finalScriptSig) {
-      return doSend()
+  function promptForPrivateKey(exists) {
+    const defaultValue = '***'
+    const value = window.prompt(`Input your private key in hex here. (Your private key never leaves your browser)`, exists ? defaultValue : '')
+    if (value != null && value != defaultValue) {
+      setPrivateKey(value)
     }
+  }
 
-    const publicKey = Buffer.from(pubkeys.get(account).substring(2), 'hex')
-    const signer = ECPair.fromPublicKey(publicKey, {compressed: true})
-    signer.sign = hash => {
-      return new Promise((resolve, reject) => {
-        return library
-          .getSigner(account)
-          .signMessage(hash)
-          .then(signature => resolve(Buffer.from(signature.substr(2, 128), 'hex')))
-          .catch(reject)
-      })
-    }
-    return btx.signAllInputsAsync(signer).then(() => {
+  function signAndSend() {
+    if (!btx.data.inputs[0].finalScriptSig) {
+      const signer = ECPair.fromPrivateKey(Buffer.from(privateKey, 'hex'), {network: getNetwork(coinType)})
+      btx.signAllInputs(signer)
       btx.finalizeAllInputs()
       setBtx(btx)
-      return doSend()
-    })
-    .catch(console.error)
-
-    function doSend() {
-      const tx = btx.extractTransaction()
-      console.error(tx)
     }
+
+    const tx = btx.extractTransaction()
+    console.error(tx)
   }
 
   function getNetwork (coinType) {
@@ -462,7 +438,7 @@ function App () {
         btxDisplay += 'OP_RETURN ' + utils.toUtf8String(Buffer.from(asm.substring(10), 'hex'))
         btxDisplay += (v ? ` with ${decShift(v, -8)}\n` : '\n')
       } else {
-        const adr = address.fromOutputScript(s, network)
+        const adr = address.fromOutputScript(s, getNetwork(coinType))
         if (adr !== sender.address) {
           btxDisplay += `${decShift(v, -8)} → ${adr}\n`
         } else {
@@ -475,26 +451,33 @@ function App () {
 
   return (
     <div className="App">
-      <Header />
       <div className="spacing flex-container">
         <div className="flex-container">
+          <span>&nbsp;{privateKey ? '✅' : '❌'}<button onClick={() => promptForPrivateKey(!!privateKey)}>Private Key</button></span>
+        </div>
+        <div className="flex-container">
           <span>API Keys:</span>
+          <span>&nbsp;{apiKeys.get('infura') ? '✅' : '❌'}<button onClick={() => promptForKey('infura')}>Infura</button></span>
           <span>&nbsp;{apiKeys.get('BlockCypher') ? '✅' : '❌'}<button onClick={() => promptForKey('BlockCypher')}>BlockCypher</button></span>
           {/* <span>&nbsp;{apiKeys.CryptoAPIs ? '✅' : '❌'}<button onClick={() => promptForKey('CryptoAPIs')}>CryptoAPIs</button></span> */}
         </div>
       </div>
       <div className="spacing flex-container">
-        {!!pubkeys.get(account) && <span className="ellipsis">PublicKey: {pubkeys.get(account)}</span>}
+        <div className="flex-container">
+          Network:&nbsp;<Dropdown options={networks} onChange={item=>setNetwork(item.value)} value={network} placeholder="Network" />
+        </div>
+        {!!miner && <span className="ellipsis">Miner: {miner}</span>}
+        {minerBalance && <span>Balance: {decShift(minerBalance, -18)}</span>}
       </div>
       <div className="spacing flex-container">
         <div className="flex-container">
-          Network:&nbsp;<Dropdown options={options} onChange={item=>setCoinType(item.value)} value={coinType} placeholder="Mining coin" />
+          Coin:&nbsp;<Dropdown options={coinTypes} onChange={item=>setCoinType(item.value)} value={coinType} placeholder="Mining coin" />
         </div>
         {!!sender && <span className="ellipsis">Sender: {sender.address}</span>}
         <div>
           {isLoading ? <div className="lds-dual-ring"></div> : <button onClick={fetchData}>Fetch</button>}
         </div>
-        {!isLoading && <span>Sender Balance: {decShift(senderBalance, -8)}</span>}
+        {!isLoading && <span>Balance: {decShift(senderBalance, -8)}</span>}
       </div>
       <div className="spacing flex-container">
         <div className="flex-container">X-Mine:&nbsp;
@@ -539,10 +522,4 @@ function App () {
   )
 }
 
-export default function InjectedApp() {
-  return (
-    <Web3ReactProvider getLibrary={getLibrary}>
-      <App />
-    </Web3ReactProvider>
-  )
-}
+export default App
