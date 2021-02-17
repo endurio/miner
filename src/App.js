@@ -11,6 +11,7 @@ import { ECPair, payments, Psbt, address, script } from 'bitcoinjs-lib'
 import blockcypher from './lib/blockcypher'
 import bcinfo from './lib/bcinfo'
 import { decShift } from './lib/big'
+import { summary } from './lib/utils'
 
 const { keccak256, computeAddress } = ethers.utils
 
@@ -99,6 +100,7 @@ function App () {
   const [utxos, setUTXOs] = React.useState()
   const [provider, setProvider] = React.useState()
   const [minerBalance, setMinerBalance] = React.useState()
+  const [txs, setTxs] = React.useState()
 
   // ethereum provider
   React.useEffect(() => {
@@ -200,7 +202,7 @@ function App () {
         return true
       }
       if (shouldUpdate(data)) {
-      setUTXOs(data.unspent_outputs)
+        setUTXOs(data.unspent_outputs)
       }
     }, force)
   }
@@ -408,6 +410,56 @@ function App () {
     }
   }, [input, fee, xmine])
 
+  React.useEffect(() => {
+    if (!client) {
+      return
+    }
+    client.get(`/rawaddr/${sender.address}?limit=13`, (err, data) => {
+      if (err) {
+        return console.error(err)
+      }
+      setSenderBalance(Number(data.final_balance))
+      const now = Math.floor(Date.now() / 1000)
+      const txs = data.txs.filter(tx => {
+        if (now-Number(tx.time) >= 60*60*999) {
+          return false  // too old
+        }
+        return tx.out.some(out => out.script.startsWith('6a'))
+      })
+      async function scanTxs(txs) {
+        const blocks = await new Promise((resolve, reject) =>
+          client.get(`/blocks?format=json`, (err, data) => err ? reject(err) : resolve(data.blocks))
+        )
+        for (const tx of txs) {
+          const memoScript = tx.out.find(o => o.script.startsWith('6a')).script
+          const blocksAtHeight = blocks.filter(block => block.height === tx.block_height)
+          for (const {hash} of blocksAtHeight) {
+            const block = await new Promise((resolve, reject) =>
+              client.get(`/rawblock/${hash}`, (err, data) => err ? reject(err) : resolve(data))
+            )
+            if (block.tx.some(tx => tx.hash == tx.hash)) {
+              const others = block.tx.filter(t => {
+                const opret = t.out.find(o => o.script.startsWith('6a'))
+                if (!opret) {
+                  return false
+                }
+                return opret.script.substring(0, 8) == memoScript.substring(0, 8)
+              })
+              console.error(others)
+              break // found the block contains the tx
+            }
+          }
+          break
+        }
+        return txs
+      }
+      scanTxs(txs).then(setTxs)
+      // const unconfirmed = txs.filter(tx => !tx.block_height)
+      // const confirmed = txs.filter(tx => !!tx.block_height)
+      // console.error(unconfirmed, confirmed)
+    }, true)
+  }, [utxos, chainHead])
+
   function promptForKey(key) {
     const value = window.prompt(`API key for ${key}:`, apiKeys.get(key))
     if (value != null) {
@@ -445,12 +497,16 @@ function App () {
         console.error(res.error)
       } else {
         console.log('tx successfully sent', res.tx)
-        const coinPath = coinType === 'BTC' ? 'btc' : 'btc-testnet'
-        const url = `https://live.blockcypher.com/${coinPath}/tx/${res.tx.hash}/`
-        window.open(url, '_blank')
+        exploreTx(res.tx.hash)
       }
       fetchUnspent(true)
     })
+  }
+
+  function exploreTx(hash) {
+    const coinPath = coinType === 'BTC' ? 'btc' : 'btc-testnet'
+    const url = `https://live.blockcypher.com/${coinPath}/tx/${hash}/`
+    window.open(url, '_blank')
   }
 
   function getNetwork (coinType) {
@@ -523,6 +579,13 @@ function App () {
         </div>
         {!isLoading && <span>Balance: {decShift(senderBalance, -8)}</span>}
       </div>
+      {txs && txs.map(tx => (
+        <div className="spacing flex-container">
+          <div className="flex-container">
+            <button style={{fontFamily: 'monospace'}} onClick={()=>exploreTx(tx.hash)}>{summary(tx.hash)}</button>
+          </div>
+        </div>
+      ))}
       <div className="spacing flex-container">
         <div className="flex-container">X-Mine:&nbsp;
           <input maxLength={3} style={{width: 30}}
