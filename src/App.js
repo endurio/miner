@@ -265,7 +265,7 @@ function App () {
           }
         }
       }
-      const utxoWithMostRecipient = utxos.reduce((prev, current) => (prev.recipients||[]).length > (current.recipients||[]).length ? prev : current)
+      const utxoWithMostRecipient = utxos.reduce((prev, current) => (prev.recipients||[]).length > (current.recipients||[]).length ? prev : current, [])
       console.log('use the best UTXO found', utxoWithMostRecipient)
       return utxoWithMostRecipient
 
@@ -466,7 +466,7 @@ function App () {
   }
 
   // statuses
-  const isLoading = isNaN(senderBalance)
+  const isLoading = !chainHead || isNaN(senderBalance)
 
   if (typeof btx === 'string') {
     var btxError = btx
