@@ -7,9 +7,9 @@ import Dropdown from 'react-dropdown'
 import { useLocalStorage } from '@rehooks/local-storage'
 import { ethers, utils } from 'ethers'
 import ci from 'coininfo'
-import { ECPair, payments, Psbt, address, script } from 'bitcoinjs-lib'
+import { ECPair, payments, Psbt, TransactionBuilder, address, script } from 'bitcoinjs-lib'
 import blockcypher from './lib/blockcypher'
-import bcinfo from './lib/bcinfo'
+import BcClient from './lib/BlockchainClient'
 import { decShift } from './lib/big'
 import { summary } from './lib/utils'
 
@@ -114,10 +114,15 @@ function App () {
 
   // bitcoin client
   React.useEffect(() => {
-    const network = coinType === 'BTC' ? 'mainnet' : 'testnet'
-    const client = bcinfo({
+    const keyType = coinType === 'BTC' ? 'tatum' : 'tatum-test'
+    const key = apiKeys.get(keyType)
+    if (!key) {
+      return console.error('no API key provided')
+    }
+    const client = BcClient({
       inBrowser: true,
-      network,
+      chain: 'bitcoin',
+      key,
     })
     setClient(client)
   }, [coinType, apiKeys])
@@ -160,12 +165,13 @@ function App () {
     }
     if (!!sender) {
       setSenderBalance(undefined)
-      client.query(`/addressbalance/${sender.address}?confirmations=0`, (err, data) => {
+      client.get(`/address/balance/${sender.address}`, (err, data) => {
         if (err) return console.error(err)
-        setSenderBalance(Number(data))
+        const balance = decShift(data.incoming, 8) - decShift(data.outgoing, 8)
+        setSenderBalance(Number(balance))
       })
     }
-    client.get('/latestblock', (err, data) => {
+    client.get('/info', (err, data) => {
       if (err) {
         console.error(err)
         return setChainHead(undefined)
@@ -179,30 +185,47 @@ function App () {
     if (!sender) {
       return
     }
-    client.get(`/unspent?active=${sender.address}`, (err, data) => {
+    client.get(`/transaction/address/${sender.address}?pageSize=50`, (err, txs) => {
       if (err) {
         return console.error(err)
       }
-      function shouldUpdate(data) {
-        if (!data || !data.unspent_outputs) {
+      const unspents = extractUnspents(txs)
+      if (shouldUpdate(unspents)) {
+        setUTXOs(unspents)
+      }
+      function extractUnspents(txs) {
+        const unspents = []
+        for (const tx of txs) {
+          const u = tx.outputs.reduce((u, o, index) => {
+            if (o.address === sender.address) {
+              const spent = txs.some(t => t.inputs.some(({prevout}) => prevout.hash === tx.hash && prevout.index === index))
+              if (!spent) {
+                u.push({...o, tx_hash: tx.hash, index})
+              }
+            }
+            return u
+          }, [])
+          unspents.push(...u)
+        }
+        return unspents
+      }
+      function shouldUpdate(unspents) {
+        if (!unspents) {
           return false
         }
         if (!utxos) {
           return true
         }
-        const newLen = data.unspent_outputs.length
+        const newLen = unspents.length
         if (newLen == utxos.length) {
           if (newLen == 0) {
             return false  // empty
           }
-          if (data.unspent_outputs[newLen-1].tx_hash == utxos[utxos.length-1].tx_hash) {
+          if (unspents[newLen-1].tx_hash == utxos[utxos.length-1].tx_hash) {
             return false  // no change
           }
         }
         return true
-      }
-      if (shouldUpdate(data)) {
-        setUTXOs(data.unspent_outputs)
       }
     }, force)
   }
@@ -211,6 +234,22 @@ function App () {
       fetchUnspent()
     }
   }, [chainHead, sender, client])
+
+  async function getBlock(n) {
+    if (!cacheBlock[n]) {
+      try {
+        const block = await new Promise((resolve, reject) =>
+          client.get(`/block/${n}`, (err, data) => err ? reject(err) : resolve(data))
+        )
+        if (block.txs) {
+          cacheBlock[n] = block
+        }
+      } catch(err) {
+        console.error(err)
+      }
+    }
+    return cacheBlock[n]
+  }
 
   React.useEffect(() => {
     if (!client || !chainHead || !utxos) {
@@ -223,32 +262,23 @@ function App () {
       // utxos = [(utxos||[])[0]]  // only use the first UTXO for the blockcypher limit
       for (const utxo of utxos) {
         utxo.recipients = []
-        let n = chainHead.hash
         for (let i = 0; i < maxBlocks; ++i) {
-        // for (let n = chainHead.height; n > chainHead.height-maxBlocks; --n) {
+          const n = chainHead.blocks-i
           try {
-            if (!cacheBlock[n]) {
-              const block = await new Promise((resolve, reject) => {
-                client.get(`/rawblock/${n}`, (err, data) => {
-                  if (err) return reject(err)
-                  resolve (data)
-                })
-              })
-              block.tx.shift()  // remove the coinbase tx
-              cacheBlock[n] = block
+            const block = await getBlock(n)
+            if (!block) {
+              continue  // skip the missing block
             }
-            const block = cacheBlock[n]
-            n = block.prev_block
             if (block.bits === 0x1d00ffff) {
               continue    // skip testnet minimum difficulty blocks
             }
-            for (const tx of block.tx) {
-              if (!isHit(utxo.tx_hash_big_endian, tx.hash)) {
+            for (const tx of block.txs) {
+              if (!isHit(utxo.tx_hash, tx.hash)) {
                 continue
               }
               try {
                 // check for OP_RET in recipient tx
-                const hasOpRet = tx.out.some(o => o.script.startsWith('6a'))   // OP_RET = 0x6a
+                const hasOpRet = tx.outputs.some(o => o.script.startsWith('6a'))   // OP_RET = 0x6a
                 if (hasOpRet) {
                   continue
                 }
@@ -313,10 +343,10 @@ function App () {
       }
 
       function isValid(psbt) {
-        if (!psbt || !psbt.data) {
+        if (!psbt) {
           return false
         }
-        const tx = psbt.data.globalMap.unsignedTx.tx
+        const tx = psbt.buildIncomplete()
         const txSize = tx.toBuffer().length + 107 // at least 107 bytes signature
         const inputSize = 32 + 4 + 107 + 4
         // assume that the first output is OP_RET and the last is the coin change
@@ -334,7 +364,8 @@ function App () {
     }
 
     async function build(bountyAmount, outValue = 0) {
-      const psbt = new Psbt({network: getNetwork(coinType)});
+      // const psbt = new Psbt({network: getNetwork(coinType)});
+      const psbt = new TransactionBuilder(getNetwork(coinType))
 
       // add the memo output
       let memo = 'endur.io'
@@ -342,10 +373,7 @@ function App () {
         memo += ' x' + xmine.get(coinType)
       }
       const dataScript = payments.embed({data: [Buffer.from(memo, 'utf8')]})
-      psbt.addOutput({
-        script: dataScript.output,
-        value: 0,
-      })
+      psbt.addOutput(dataScript.output, 0)
 
       let inValue = 0
       // build the mining outputs and required inputs
@@ -356,49 +384,26 @@ function App () {
       if (changeValue <= 0) {
         return 'insufficient fund'
       }
-      psbt.addOutput({
-        address: sender.address,
-        value: changeValue,
-      })
+      psbt.addOutput(sender.address, changeValue)
 
       return psbt
 
       async function buildWithoutChange() {
         let recIdx = 0
         for (const input of inputs) {
-          const txHash = input.tx_hash_big_endian
-          if (!cacheTxHex[txHash]) {
-            cacheTxHex[txHash] = await new Promise((resolve, reject) => {
-              client.get(`/rawtx/${txHash}?format=hex`, (err, data) => {
-                if (err) return reject(err)
-                resolve (data)
-              })
-            })
-          }
-          const txHex = cacheTxHex[txHash]
-
-          psbt.addInput({
-            hash: txHash,
-            index: input.tx_output_n,
-            // non-segwit inputs now require passing the whole previous tx as Buffer
-            nonWitnessUtxo: Buffer.from(txHex, 'hex'),
-          })
-          // psbt.signInput(psbt.txInputs.length-1, ECPairs[sender])
+          psbt.addInput(input.tx_hash, input.index)
           inValue += parseInt(input.value)
 
           while (recIdx < recipients.length) {
             // const rec = recipients[recIdx % (recipients.length>>1)]     // duplicate recipient
             const rec = recipients[recIdx]
-            const output = rec.out[rec.out.length-1]
+            const output = rec.outputs[rec.outputs.length-1]
             const amount = bountyAmount
             if (outValue + amount > inValue) {
               break;  // need more input
             }
             outValue += amount
-            psbt.addOutput({
-              script: Buffer.from(output.script, 'hex'),
-              value: amount,
-            })
+            psbt.addOutput(Buffer.from(output.script, 'hex'), amount)
             if (++recIdx >= recipients.length) {
               // recipients list exhausted
               return
@@ -414,42 +419,35 @@ function App () {
     if (!client) {
       return
     }
-    client.get(`/rawaddr/${sender.address}?limit=13`, (err, data) => {
+    client.get(`/transaction/address/${sender.address}?pageSize=50`, (err, data) => {
       if (err) {
         return console.error(err)
       }
-      setSenderBalance(Number(data.final_balance))
       const now = Math.floor(Date.now() / 1000)
-      const txs = data.txs.filter(tx => {
+      const txs = data.filter(tx => {
         if (now-Number(tx.time) >= 60*60*999) {
           return false  // too old
         }
-        return tx.out.some(out => out.script.startsWith('6a'))
+        return tx.outputs.some(out => out.script.startsWith('6a'))
       })
       async function scanTxs(txs) {
-        const blocks = await new Promise((resolve, reject) =>
-          client.get(`/blocks?format=json`, (err, data) => err ? reject(err) : resolve(data.blocks))
-        )
         for (const tx of txs) {
-          const memoScript = tx.out.find(o => o.script.startsWith('6a')).script
-          const blocksAtHeight = blocks.filter(block => block.height === tx.block_height)
-          for (const {hash} of blocksAtHeight) {
-            const block = await new Promise((resolve, reject) =>
-              client.get(`/rawblock/${hash}`, (err, data) => err ? reject(err) : resolve(data))
-            )
-            if (block.tx.some(tx => tx.hash == tx.hash)) {
-              const others = block.tx.filter(t => {
-                const opret = t.out.find(o => o.script.startsWith('6a'))
-                if (!opret) {
-                  return false
-                }
-                return opret.script.substring(0, 8) == memoScript.substring(0, 8)
-              })
-              console.error(others)
-              break // found the block contains the tx
+          const memoScript = tx.outputs.find(o => o.script.startsWith('6a')).script
+          const block = await getBlock(tx.blockNumber)
+          const others = block.txs.filter(t => {
+            if (t.hash === tx.hash) {
+              return false
             }
+            const opret = t.outputs.find(o => o.script.startsWith('6a'))
+            if (!opret) {
+              return false
+            }
+            return opret.script.substring(0, 8) == memoScript.substring(0, 8)
+          })
+          if (!others || !others.length) {
+            continue  // no competitors
           }
-          break
+          console.error('others', others)
         }
         return txs
       }
@@ -476,28 +474,27 @@ function App () {
   }
 
   function sendTx() {
-    if (!btx.data.inputs[0].finalScriptSig) {
-      const signer = ECPair.fromPrivateKey(Buffer.from(privateKey, 'hex'), {network: getNetwork(coinType)})
-      btx.signAllInputs(signer)
-      btx.finalizeAllInputs()
+    let tx = btx.buildIncomplete()
+    const signed = !tx.ins.some(({script}) => !script || !script.length)
+    if (!signed) {
+      const signer = ECPair.fromPrivateKey(Buffer.from(privateKey, 'hex'), {network: btx.network})
+      for (let i = 0; i < tx.ins.length; ++i) {
+        btx.sign(i, signer)
+      }
+      console.log('transaction signed')
       setBtx(btx)
     }
 
-    const tx = btx.extractTransaction()
-    console.log('sending signed tx', tx)
-    const network = coinType === 'BTC' ? 'mainnet' : 'testnet'
-    const wallet = blockcypher({
-      inBrowser: true,
-      key: apiKeys.get('BlockCypher'),
-      network,
-    })
-    wallet.post('/txs/push', {tx: tx.toHex()}, (unknown, res) => {
-      console.error(unknown, res)
-      if (res.error) {
-        console.error(res.error)
+    tx = btx.build()
+
+    console.log('sending signed tx', tx.toHex())
+
+    client.post('/broadcast', { txData: tx.toHex() }, (err, res) => {
+      if (err) {
+        console.error(err, res)
       } else {
-        console.log('tx successfully sent', res.tx)
-        exploreTx(res.tx.hash)
+        console.log('tx successfully sent', res.txId)
+        exploreTx(res.txId)
       }
       fetchUnspent(true)
     })
@@ -527,7 +524,7 @@ function App () {
   if (typeof btx === 'string') {
     var btxError = btx
   } else if (btx) {
-    var btxDisplay = decodeTx(btx.data.globalMap.unsignedTx.tx)
+    var btxDisplay = decodeTx(btx.buildIncomplete())
   }
 
   function decodeTx(tx) {
@@ -559,6 +556,8 @@ function App () {
           <span>API Keys:</span>
           <span>&nbsp;{apiKeys.get('infura') ? '✅' : '❌'}<button onClick={() => promptForKey('infura')}>Infura</button></span>
           <span>&nbsp;{apiKeys.get('BlockCypher') ? '✅' : '❌'}<button onClick={() => promptForKey('BlockCypher')}>BlockCypher</button></span>
+          <span>&nbsp;{apiKeys.get('tatum') ? '✅' : '❌'}<button onClick={() => promptForKey('tatum')}>Tatum.io</button></span>
+          <span>&nbsp;{apiKeys.get('tatum-test') ? '✅' : '❌'}<button onClick={() => promptForKey('tatum-test')}>Tatum.io Testnet</button></span>
           {/* <span>&nbsp;{apiKeys.CryptoAPIs ? '✅' : '❌'}<button onClick={() => promptForKey('CryptoAPIs')}>CryptoAPIs</button></span> */}
         </div>
       </div>
@@ -580,7 +579,7 @@ function App () {
         {!isLoading && <span>Balance: {decShift(senderBalance, -8)}</span>}
       </div>
       {txs && txs.map(tx => (
-        <div className="spacing flex-container">
+        <div className="spacing flex-container" key={tx.hash}>
           <div className="flex-container">
             <button style={{fontFamily: 'monospace'}} onClick={()=>exploreTx(tx.hash)}>{summary(tx.hash)}</button>
           </div>
@@ -619,12 +618,15 @@ function App () {
             }}
           />
         </div>
-        {(!!apiKeys.get('BlockCypher') && !!btxDisplay) && <div className="flex-container">
-          <span><button onClick={() => sendTx()}>Send</button></span>
-        </div>}
+        <div>
+          {(!btxError&&!btxDisplay) && <div className="lds-dual-ring"></div>}
+          {(!!apiKeys.get('BlockCypher') && !!btxDisplay) && <button onClick={() => sendTx()}>Send</button>}
+        </div>
       </div>
-      {btxError && <div className='spacing flex-container'><span className="error">{btxError}</span></div>}
-      {btxDisplay && <div className='spacing flex-container'><pre>{btxDisplay}</pre></div>}
+      <div className='spacing flex-container'>
+        {btxError && <span className="error">{btxError}</span>}
+        {btxDisplay && <pre>{btxDisplay}</pre>}
+      </div>
     </div>
   )
 }
