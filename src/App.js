@@ -13,6 +13,12 @@ import BcClient from './lib/BlockchainClient'
 import { decShift } from './lib/big'
 import { summary } from './lib/utils'
 
+const IMPLEMENTATIONS = ['Endurio', 'PoR', 'RefNetwork', 'BrandMarket']
+const CONTRACT_ABI = IMPLEMENTATIONS.reduce((abi, i) => abi.concat(require(`./abis/${i}.json`).abi), [])
+const CONTRACT_ADDRESS = {
+  Ropsten: '0x0252d8DFd20938f5bd314dEd7f03Cd82070Dc1cc',
+}
+
 const { keccak256, computeAddress } = ethers.utils
 
 function isHit(txid, recipient) {
@@ -111,9 +117,11 @@ function App () {
   const [chainHead, setChainHead] = React.useState()
   const [senderBalance, setSenderBalance] = React.useState()
   const [utxos, setUTXOs] = React.useState()
+  const [txs, setTxs] = React.useState()
   const [provider, setProvider] = React.useState()
   const [minerBalance, setMinerBalance] = React.useState()
-  const [txs, setTxs] = React.useState()
+  const [contract, setContract] = React.useState()
+  const [tokenBalance, setTokenBalance] = React.useState()
 
   // ethereum provider
   React.useEffect(() => {
@@ -124,6 +132,25 @@ function App () {
     const provider = new ethers.providers.JsonRpcProvider(`https://${subnet}.infura.io/v3/${apiKeys.get('infura')}`);
     setProvider(provider)
   }, [network, apiKeys])
+
+  // contract
+  React.useEffect(() => {
+    if (!provider || !miner) {
+      return
+    }
+    // create the contract instance
+    const contract = new ethers.Contract(CONTRACT_ADDRESS[network], CONTRACT_ABI, provider)
+    contract.balanceOf(miner)
+      .then(tokenBalance => {
+        setContract(contract)
+        setTokenBalance(tokenBalance)
+      })
+      .catch(err => {
+        console.error(err)
+        setContract(undefined)
+        setTokenBalance(undefined)
+      })
+  }, [provider, miner])
 
   // bitcoin client
   React.useEffect(() => {
@@ -168,7 +195,12 @@ function App () {
   // miner balance
   React.useEffect(() => {
     if (miner && provider) {
-      provider.getBalance(miner).then(setMinerBalance)
+      provider.getBalance(miner)
+        .then(setMinerBalance)
+        .catch(err => {
+          console.error(err)
+          setMinerBalance(undefined)
+        })
     }
   }, [provider, miner])
 
@@ -627,14 +659,16 @@ function App () {
           Network:&nbsp;<Dropdown options={networks} onChange={item=>setNetwork(item.value)} value={network} placeholder="Network" />
         </div>
         {!!miner && <span className="ellipsis">Miner: {miner}</span>}
-        {minerBalance && <span>Balance: {decShift(minerBalance, -18)}</span>}
+        {!minerBalance && <div><div className="lds-dual-ring"></div></div>}
+        {minerBalance && <span>{decShift(minerBalance, -18)} <a target='blank' href={`https://${network.toLowerCase()}.etherscan.io/address/${miner}`}>ETH</a></span>}
+        {tokenBalance && <span>{decShift(tokenBalance, -18)} <a target='blank' href={`https://${network.toLowerCase()}.etherscan.io/address/${CONTRACT_ADDRESS[network]}`}>END</a></span>}
       </div>
       <div className="spacing flex-container">
         <div className="flex-container">
           Coin:&nbsp;<Dropdown options={coinTypes} onChange={item=>setCoinType(item.value)} value={coinType} placeholder="Mining coin" />
         </div>
         {!!sender && <span className="ellipsis">Sender: {sender.address}</span>}
-        {!isLoading && <span>Balance: {decShift(senderBalance, -8)}</span>}
+        {!isLoading && <span>{decShift(senderBalance, -8)} {coinType}</span>}
       </div>
       {txs && txs.map(tx => (
         <div className="spacing flex-container" key={tx.hash}>
