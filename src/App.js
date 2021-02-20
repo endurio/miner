@@ -98,7 +98,7 @@ function App () {
   const [apiKeys, setApiKey] = usePersistentMap('apiKeys')
   const coinTypes = ['BTC', 'BTC-TEST']
   const [coinType, setCoinType] = usePersistent('cointype', coinTypes[1])
-  const networks = ['Ethereum', 'Rinkeby']
+  const networks = ['Ethereum', 'Ropsten']
   const [network, setNetwork] = usePersistent('network', networks[1])
   const [miner, setMiner] = React.useState()
   const [sender, setSender] = React.useState()
@@ -120,7 +120,7 @@ function App () {
     if (!apiKeys.get('infura')) {
       return
     }
-    const subnet = network == 'Ethereum' ? 'mainet' : 'rinkeby'
+    const subnet = network == 'Ethereum' ? 'mainet' : network.toLowerCase()
     const provider = new ethers.providers.JsonRpcProvider(`https://${subnet}.infura.io/v3/${apiKeys.get('infura')}`);
     setProvider(provider)
   }, [network, apiKeys])
