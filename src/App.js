@@ -7,7 +7,7 @@ import Dropdown from 'react-dropdown'
 import { useLocalStorage } from '@rehooks/local-storage'
 import { ethers, utils } from 'ethers'
 import ci from 'coininfo'
-import { ECPair, payments, Psbt, TransactionBuilder, address, script } from 'bitcoinjs-lib'
+import { ECPair, payments, TransactionBuilder, address, script } from 'bitcoinjs-lib'
 import blockcypher from './lib/blockcypher'
 import BcClient from './lib/BlockchainClient'
 import { decShift } from './lib/big'
@@ -365,18 +365,18 @@ function App () {
     async function search(start, end) {
       if (start > end) return
       const mid = Math.floor((start + end)/2)
-      const psbt = await build(mid)
-      if (isValid(psbt)) {
-        return await search(start, mid-1) || psbt
+      const tb = await build(mid)
+      if (isValid(tb)) {
+        return await search(start, mid-1) || tb
       } else {
         return await search(mid+1, end)
       }
 
-      function isValid(psbt) {
-        if (!psbt) {
+      function isValid(tb) {
+        if (!tb) {
           return false
         }
-        const tx = psbt.buildIncomplete()
+        const tx = tb.buildIncomplete()
         const txSize = tx.toBuffer().length + 107 // at least 107 bytes signature
         const inputSize = 32 + 4 + 107 + 4
         // assume that the first output is OP_RET and the last is the coin change
@@ -394,8 +394,7 @@ function App () {
     }
 
     async function build(bountyAmount, outValue = 0) {
-      // const psbt = new Psbt({network: getNetwork(coinType)});
-      const psbt = new TransactionBuilder(getNetwork(coinType))
+      const tb = new TransactionBuilder(getNetwork(coinType))
 
       // add the memo output
       let memo = 'endur.io'
@@ -403,7 +402,7 @@ function App () {
         memo += ' x' + xmine.get(coinType)
       }
       const dataScript = payments.embed({data: [Buffer.from(memo, 'utf8')]})
-      psbt.addOutput(dataScript.output, 0)
+      tb.addOutput(dataScript.output, 0)
 
       let inValue = 0
       // build the mining outputs and required inputs
@@ -414,15 +413,15 @@ function App () {
       if (changeValue <= 0) {
         return 'insufficient fund'
       }
-      psbt.addOutput(sender.address, changeValue)
+      tb.addOutput(sender.address, changeValue)
 
-      return psbt
+      return tb
 
       async function buildWithoutChange() {
         let recIdx = 0
         for (const input of inputs) {
           const index = input.hasOwnProperty('tx_output_n') ? input.tx_output_n : input.index
-          psbt.addInput(input.tx_hash, index)
+          tb.addInput(input.tx_hash, index)
           inValue += parseInt(input.value)
 
           while (recIdx < recipients.length) {
@@ -434,7 +433,7 @@ function App () {
               break;  // need more input
             }
             outValue += amount
-            psbt.addOutput(Buffer.from(output.script, 'hex'), amount)
+            tb.addOutput(Buffer.from(output.script, 'hex'), amount)
             if (++recIdx >= recipients.length) {
               // recipients list exhausted
               return
