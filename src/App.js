@@ -15,6 +15,19 @@ import { summary } from './lib/utils'
 
 const { keccak256, computeAddress } = ethers.utils
 
+function isHit(txid, recipient) {
+  // use (recipient+txid).reverse() for LE(txid)+LE(recipient)
+  const hash = keccak256(Buffer.from(recipient+txid, 'hex').reverse())
+  return BigInt(hash) % 32n === 0n
+}
+
+function getRank(blockHash, txid) {
+  const txidLE = Buffer.from(txid, 'hex').reverse()
+  const blockHashBE = Buffer.from(blockHash, 'hex')
+  const hash = keccak256(Buffer.concat([blockHashBE, txidLE]))
+  return BigInt(hash) >> 224n
+}
+
 function getParameterByName(name, url = window.location.href) {
   name = name.replace(/[[]]/g, '\\$&');
   var regex = new RegExp('[?&]' + name + '(=([^&#]*)|&|#|$)'),
@@ -323,12 +336,6 @@ function App () {
       const utxoWithMostRecipient = utxos.reduce((prev, current) => (prev.recipients||[]).length > (current.recipients||[]).length ? prev : current, [])
       console.log('use the best UTXO found', utxoWithMostRecipient)
       return utxoWithMostRecipient
-
-      function isHit(txid, recipient) {
-        // use (recipient+txid).reverse() for LE(txid)+LE(recipient)
-        const hash = keccak256(Buffer.from(recipient+txid, 'hex').reverse())
-        return BigInt(hash) % 32n === 0n
-      }
     }
   }, [utxos, maxBounty])
 
@@ -454,6 +461,7 @@ function App () {
         }
         return tx.outputs.some(out => out.script.startsWith('6a'))
       })
+      scanTxs(txs).then(setTxs)
       async function scanTxs(txs) {
         for (const tx of txs) {
           const memoScript = tx.outputs.find(o => o.script.startsWith('6a')).script
@@ -466,19 +474,26 @@ function App () {
             if (!opret) {
               return false
             }
-            return opret.script.substring(0, 8) == memoScript.substring(0, 8)
+            // TODO: properly check the same memo instead of this lazy check
+            return opret.script.substring(0, 10) == memoScript.substring(0, 10)
           })
           if (!others || !others.length) {
             continue  // no competitors
           }
-          console.error('others', others)
+          tx.rank = getRank(block.hash, tx.hash)
+          let bestTx = tx
+          others.forEach(t => {
+            t.rank = getRank(block.hash, t.hash)
+            if (t.rank < bestTx.rank) {
+              bestTx = t
+            }
+          })
+          if (bestTx.hash !== tx.hash) {
+            tx.lostTo = bestTx.hash
+          }
         }
         return txs
       }
-      scanTxs(txs).then(setTxs)
-      // const unconfirmed = txs.filter(tx => !tx.block_height)
-      // const confirmed = txs.filter(tx => !!tx.block_height)
-      // console.error(unconfirmed, confirmed)
     }, true)
   }, [utxos, chainHead])
 
@@ -561,6 +576,10 @@ function App () {
     };
   }
 
+  function submitTx(tx) {
+    console.error('submit', tx)
+  }
+
   // statuses
   const isLoading = !chainHead || isNaN(senderBalance)
 
@@ -622,6 +641,10 @@ function App () {
         <div className="spacing flex-container" key={tx.hash}>
           <div className="flex-container">
             <button style={{fontFamily: 'monospace'}} onClick={()=>exploreTx(tx.hash)}>{summary(tx.hash)}</button>
+            {tx.lostTo ?
+              <div>&nbsp;❌&nbsp;<button style={{fontFamily: 'monospace'}} onClick={()=>exploreTx(tx.lostTo)}>{summary(tx.lostTo)}</button></div> :
+              <div>&nbsp;✔️&nbsp;<button style={{fontFamily: 'monospace'}} onClick={()=>submitTx(tx)}>Submit</button></div>
+          }
           </div>
         </div>
       ))}
