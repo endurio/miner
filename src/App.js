@@ -159,7 +159,7 @@ function App () {
     }
   }, [provider, miner])
 
-  function fetchData() {
+  function fetchData(unspent) {
     if (!client) {
       return
     }
@@ -176,64 +176,87 @@ function App () {
         console.error(err)
         return setChainHead(undefined)
       }
-      setChainHead(data)
+      if (!chainHead || chainHead.bestblockhash !== data.bestblockhash) {
+        setChainHead(data)
+      }
     })
+    if (unspent) {
+      fetchUnspent()
+    }
   }
   React.useEffect(fetchData, [sender, client]) // ensures refresh if referential identity of library doesn't change across chainIds
 
-  function fetchUnspent(force) {
+  function fetchUnspent() {
     if (!sender) {
       return
     }
-    client.get(`/transaction/address/${sender.address}?pageSize=50`, (err, txs) => {
-      if (err) {
-        return console.error(err)
-      }
-      const unspents = extractUnspents(txs)
-      if (shouldUpdate(unspents)) {
-        setUTXOs(unspents)
-      }
-      function extractUnspents(txs) {
-        const unspents = []
-        for (const tx of txs) {
-          const u = tx.outputs.reduce((u, o, index) => {
-            if (o.address === sender.address) {
-              const spent = txs.some(t => t.inputs.some(({prevout}) => prevout.hash === tx.hash && prevout.index === index))
-              if (!spent) {
-                u.push({...o, tx_hash: tx.hash, index})
+    if (!!apiKeys.get('BlockCypher')) {
+      const bc = blockcypher({
+        inBrowser: true,
+        key: apiKeys.get('BlockCypher'),
+        network: coinType === 'BTC' ? 'mainnet' : 'testnet',
+      })
+      bc.get(`/addrs/${sender.address}?unspentOnly=true`, (err, data) => {
+        if (err) {
+          return console.error(err)
+        }
+        setSenderBalance(data.final_balance)
+        const unspents = data.txrefs
+        if (shouldUpdate(unspents)) {
+          setUTXOs(unspents)
+        }
+      })
+    } else if (client) {
+      client.get(`/transaction/address/${sender.address}?pageSize=50`, (err, txs) => {
+        if (err) {
+          return console.error(err)
+        }
+        const unspents = extractUnspents(txs)
+        if (shouldUpdate(unspents)) {
+          setUTXOs(unspents)
+        }
+        function extractUnspents(txs) {
+          const unspents = []
+          for (const tx of txs) {
+            const u = tx.outputs.reduce((u, o, index) => {
+              if (o.address === sender.address) {
+                const spent = txs.some(t => t.inputs.some(({prevout}) => prevout.hash === tx.hash && prevout.index === index))
+                if (!spent) {
+                  u.push({...o, tx_hash: tx.hash, index})
+                }
               }
-            }
-            return u
-          }, [])
-          unspents.push(...u)
+              return u
+            }, [])
+            unspents.push(...u)
+          }
+          return unspents
         }
-        return unspents
+      })
+    }
+    function shouldUpdate(unspents) {
+      if (!unspents) {
+        return false
       }
-      function shouldUpdate(unspents) {
-        if (!unspents) {
-          return false
-        }
-        if (!utxos) {
-          return true
-        }
-        const newLen = unspents.length
-        if (newLen == utxos.length) {
-          if (newLen == 0) {
-            return false  // empty
-          }
-          if (unspents[newLen-1].tx_hash == utxos[utxos.length-1].tx_hash) {
-            return false  // no change
-          }
-        }
+      if (!utxos) {
         return true
       }
-    }, force)
+      const newLen = unspents.length
+      if (newLen == utxos.length) {
+        if (newLen == 0) {
+          return false  // empty
+        }
+        if (unspents[newLen-1].tx_hash == utxos[utxos.length-1].tx_hash) {
+          return false  // no change
+        }
+      }
+      return true
+    }
   }
   React.useEffect(() => {
     if (!!chainHead) {
       fetchUnspent()
     }
-  }, [chainHead, sender, client])
+  }, [sender, chainHead])
 
   async function getBlock(n) {
     if (!cacheBlock[n]) {
@@ -310,7 +333,7 @@ function App () {
   }, [utxos, maxBounty])
 
   React.useEffect(() => {
-    if (!input || !input.recipients) {
+    if (!input || !input.recipients || !utxos) {
       return
     }
 
@@ -391,7 +414,8 @@ function App () {
       async function buildWithoutChange() {
         let recIdx = 0
         for (const input of inputs) {
-          psbt.addInput(input.tx_hash, input.index)
+          const index = input.hasOwnProperty('tx_output_n') ? input.tx_output_n : input.index
+          psbt.addInput(input.tx_hash, index)
           inValue += parseInt(input.value)
 
           while (recIdx < recipients.length) {
@@ -486,18 +510,37 @@ function App () {
     }
 
     tx = btx.build()
+    setBtx(undefined)   // clear the about-to-send tx
 
-    console.log('sending signed tx', tx.toHex())
+    const txHex = tx.toHex()
+    console.log('sending signed tx', txHex)
 
-    client.post('/broadcast', { txData: tx.toHex() }, (err, res) => {
-      if (err) {
-        console.error(err, res)
-      } else {
-        console.log('tx successfully sent', res.txId)
-        exploreTx(res.txId)
-      }
-      fetchUnspent(true)
-    })
+    if (!!apiKeys.get('BlockCypher')) {
+      const bc = blockcypher({
+        inBrowser: true,
+        key: apiKeys.get('BlockCypher'),
+        network: coinType === 'BTC' ? 'mainnet' : 'testnet',
+      })
+      bc.post('/txs/push', {tx: txHex}, (unknown, res) => {
+        if (res.error) {
+          console.error(res.error)
+        } else {
+          console.log('tx successfully sent', res.tx)
+          exploreTx(res.tx.hash)
+        }
+        fetchUnspent(true)
+      })
+    } else if (!!client) {
+      client.post('/broadcast', { txData: txHex }, (err, res) => {
+        if (err) {
+          console.error(err, res)
+        } else {
+          console.log('tx successfully sent', res.txId)
+          exploreTx(res.txId)
+        }
+        fetchUnspent(true)
+      })
+    }
   }
 
   function exploreTx(hash) {
@@ -573,9 +616,6 @@ function App () {
           Coin:&nbsp;<Dropdown options={coinTypes} onChange={item=>setCoinType(item.value)} value={coinType} placeholder="Mining coin" />
         </div>
         {!!sender && <span className="ellipsis">Sender: {sender.address}</span>}
-        <div>
-          {isLoading ? <div className="lds-dual-ring"></div> : <button onClick={fetchData}>Fetch</button>}
-        </div>
         {!isLoading && <span>Balance: {decShift(senderBalance, -8)}</span>}
       </div>
       {txs && txs.map(tx => (
@@ -618,9 +658,10 @@ function App () {
             }}
           />
         </div>
+        <div>{isLoading ? <div className="lds-dual-ring"></div> : <button onClick={()=>fetchData(true)}>Reload</button>}</div>
         <div>
           {(!btxError&&!btxDisplay) && <div className="lds-dual-ring"></div>}
-          {(!!apiKeys.get('BlockCypher') && !!btxDisplay) && <button onClick={() => sendTx()}>Send</button>}
+          {((client || apiKeys.get('BlockCypher')) && !!btxDisplay) && <button onClick={() => sendTx()}>Send</button>}
         </div>
       </div>
       <div className='spacing flex-container'>

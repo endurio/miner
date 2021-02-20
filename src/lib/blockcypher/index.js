@@ -45,89 +45,25 @@ function BlockCypher(opts) {
     return baseUrl + path
   }
 
-  const STORAGE_KEY = 'blockcypher-cache'
-
-  function _getChainInfo(callback) {
-    let chainInfo = localStorage.getItem(STORAGE_KEY)
-    if (chainInfo) {
-      chainInfo = JSON.parse(chainInfo)
-    }
-    if (chainInfo) {
-      const blockTimestamp = new Date(chainInfo.time)
-      const duration = new Date() - blockTimestamp
-      const seconds = duration / 1000
-      const mins = seconds / 60
-      if (mins < 10) {
-        return callback(undefined, chainInfo)
-      }
-    }
-    const url = _constructUrl('')
-    request.get(url, (err, response, body) => {
-      if (err) {
-        callback(err, undefined);
-      }
-      else {
-        try {
-          const res = JSON.parse(body)
-          localStorage.setItem(STORAGE_KEY, body)
-          callback(false, res);
-        }
-        catch (err) {
-          callback(err, undefined);
-        }
-      }
-    })
-  }
-
-  function _hashCode(str) {
-    let hash = 0;
-    for (let i = 0; i < str.length; i++) {
-      const char = str.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
-      hash = hash & hash; // Convert to 32bit integer
-    }
-    return hash >>> 0;  // convert int32 to uint32
-  }
-
   //abstracted json get request caller method.
   function _getFromURL(url, callback) {
-    _getChainInfo((err, chainInfo) => {
-      if (!chainInfo) {
-        throw '!chainInfo'
+    return request.get(url, (err, response, body) => {
+      if (err) {
+        console.log("error getting data", err);
+        return callback(err, body);
       }
-      const ITEM_STORAGE_KEY = `${STORAGE_KEY}-${_hashCode(url)}`
-      const ITEM_HASH_STORAGE_KEY = `${ITEM_STORAGE_KEY}-hash`
-      const body = localStorage.getItem(ITEM_STORAGE_KEY)
-      if (body) {
-        const itemHash = localStorage.getItem(ITEM_HASH_STORAGE_KEY)
-        if (itemHash && itemHash == chainInfo.hash) {
-          const res = JSON.parse(body)
-          console.log("cache.return", url)
-          return callback(false, res);
-        }
+      try {
+        body = JSON.parse(body)
       }
-      request.get(url, (err, response, body) => {
-        if (err) {
-          console.log("error fetching info from blockcypher " + err);
-          return callback(err, null);
-        }
-        try {
-          const res = JSON.parse(body)
-          console.log("cache.set", url)
-          localStorage.setItem(ITEM_STORAGE_KEY, body)
-          localStorage.setItem(ITEM_HASH_STORAGE_KEY, chainInfo.hash)
-          return callback(false, res);
-        }
-        catch (err) {
-          console.log("error parsing data recieved from blockcypher");
-          return callback(err, null);
-        }
-      });
+      catch (e) {
+        console.log("error parsing response body", e, body);
+      }
+      return callback(err, body);
     })
   }
 
   function _postToURL(url, body, callback) {
-    request({
+    return request({
       url: url, //URL to hit
       method: 'POST',
       headers: {
@@ -136,27 +72,27 @@ function BlockCypher(opts) {
       body: JSON.stringify(body)
     }, function (err, response, body) {
       if (err) {
-        callback(err, null);
-      } else {
-        try {
-          callback(false, JSON.parse(body));
-        }
-        catch (err) {
-          callback(err, null);
-        }
+        console.log("error getting response data", err);
+        return callback(err, body);
       }
+      try {
+        body = JSON.parse(body)
+      }
+      catch (e) {
+        console.log("error parsing response body", e, body);
+      }
+      callback(err, body);
     });
   }
 
   return {
-    getChainInfo: _getChainInfo,
     get(path, callback) {
       const url = _constructUrl(path)
-      _getFromURL(url, callback)
+      return _getFromURL(url, callback)
     },
     post(path, body, callback) {
       const url = _constructUrl(path)
-      _postToURL(url, body, callback)
+      return _postToURL(url, body, callback)
     }
   }
 }
