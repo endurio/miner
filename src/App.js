@@ -600,7 +600,7 @@ function App () {
           <span>&nbsp;{apiKeys.get('infura') ? '✅' : '❌'}<button onClick={() => promptForKey('infura')}>Infura</button></span>
           <span>&nbsp;{apiKeys.get('BlockCypher') ? '✅' : '❌'}<button onClick={() => promptForKey('BlockCypher')}>BlockCypher</button></span>
           <span>&nbsp;{apiKeys.get('tatum') ? '✅' : '❌'}<button onClick={() => promptForKey('tatum')}>Tatum.io</button></span>
-          <span>&nbsp;{apiKeys.get('tatum-test') ? '✅' : '❌'}<button onClick={() => promptForKey('tatum-test')}>Tatum.io Testnet</button></span>
+          <span>&nbsp;{apiKeys.get('tatum-test') ? '✅' : '❌'}<button onClick={() => promptForKey('tatum-test')}>Tatum-Test</button></span>
           {/* <span>&nbsp;{apiKeys.CryptoAPIs ? '✅' : '❌'}<button onClick={() => promptForKey('CryptoAPIs')}>CryptoAPIs</button></span> */}
         </div>
       </div>
