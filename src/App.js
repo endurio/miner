@@ -498,9 +498,12 @@ function App () {
     }
   }, [input, fee, xmine])
 
-  function fetchRecent() {
+  function fetchRecent(manual) {
     if (!client) {
       return
+    }
+    if (manual) {
+      setTxs(undefined)
     }
     client.get(`/transaction/address/${sender.address}?pageSize=50`, (err, data) => {
       if (err) {
@@ -561,7 +564,7 @@ function App () {
       }
     })
   }
-  React.useEffect(fetchRecent, [utxos, chainHead])
+  React.useEffect(fetchRecent, [chainHead])
 
   function promptForKey(key) {
     const value = window.prompt(`API key for ${key}:`, apiKeys.get(key))
