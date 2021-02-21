@@ -119,6 +119,7 @@ function App () {
   const [utxos, setUTXOs] = React.useState()
   const [txs, setTxs] = React.useState()
   const [provider, setProvider] = React.useState()
+  const [wallet, setWallet] = React.useState()
   const [minerBalance, setMinerBalance] = React.useState()
   const [contract, setContract] = React.useState()
   const [tokenBalance, setTokenBalance] = React.useState()
@@ -133,14 +134,22 @@ function App () {
     setProvider(provider)
   }, [network, apiKeys])
 
+  // ethereum wallet
+  React.useEffect(() => {
+    if (!provider || !privateKey) {
+      return
+    }
+    setWallet(new ethers.Wallet(privateKey, provider))
+  }, [provider, privateKey])
+
   // contract
   React.useEffect(() => {
-    if (!provider || !miner) {
+    if (!wallet) {
       return
     }
     // create the contract instance
-    const contract = new ethers.Contract(CONTRACT_ADDRESS[network], CONTRACT_ABI, provider)
-    contract.balanceOf(miner)
+    const contract = new ethers.Contract(CONTRACT_ADDRESS[network], CONTRACT_ABI, wallet)
+    contract.balanceOf(wallet.address)
       .then(tokenBalance => {
         setContract(contract)
         setTokenBalance(tokenBalance)
@@ -150,7 +159,7 @@ function App () {
         setContract(undefined)
         setTokenBalance(undefined)
       })
-  }, [provider, miner])
+  }, [wallet])
 
   // bitcoin client
   React.useEffect(() => {
@@ -477,7 +486,7 @@ function App () {
     }
   }, [input, fee, xmine])
 
-  React.useEffect(() => {
+  function fetchRecent() {
     if (!client) {
       return
     }
@@ -521,12 +530,26 @@ function App () {
           })
           if (bestTx.hash !== tx.hash) {
             tx.lostTo = bestTx.hash
+            continue
           }
         }
+        // // check whether the tx is already submitted
+        // if (wallet && contract) {
+        //   function getPubX(privateKey) {
+        //     const keyPair = ECPair.fromPrivateKey(Buffer.from(privateKey, 'hex'))
+        //     return keyPair.publicKey.slice(1)
+        //   }
+        //   // wallet exists ensure that both privateKey and provider exists
+        //   const pubX = getPubX(privateKey)
+        //   // TODO: filter event Submit(pubkey: pubX)
+        //   const filter = contract.filters.Submit(null, null, null, pubX)
+        //   wallet.provider.getLogs(filter).then(console.error)
+        // }
         return txs
       }
-    }, true)
-  }, [utxos, chainHead])
+    })
+  }
+  React.useEffect(fetchRecent, [utxos, chainHead])
 
   function promptForKey(key) {
     const value = window.prompt(`API key for ${key}:`, apiKeys.get(key))
@@ -670,14 +693,18 @@ function App () {
         {!!sender && <span className="ellipsis">Sender: {sender.address}</span>}
         {!isLoading && <span>{decShift(senderBalance, -8)} {coinType}</span>}
       </div>
+      <div className="spacing flex-container">
+        <div>Recent Mined Transactions</div>
+        <div>{txs ? <button onClick={()=>fetchRecent(true)}>Reload</button> : <div className="lds-dual-ring"></div>}</div>
+      </div>
       {txs && txs.map(tx => (
-        <div className="spacing flex-container" key={tx.hash}>
+        <div className="spacing flex-container" key={tx.hash} style={{marginLeft: '2em'}}>
           <div className="flex-container">
             <button style={{fontFamily: 'monospace'}} onClick={()=>exploreTx(tx.hash)}>{summary(tx.hash)}</button>
-            {tx.lostTo ?
-              <div>&nbsp;❌&nbsp;<button style={{fontFamily: 'monospace'}} onClick={()=>exploreTx(tx.lostTo)}>{summary(tx.lostTo)}</button></div> :
-              <div>&nbsp;✔️&nbsp;<button style={{fontFamily: 'monospace'}} onClick={()=>submitTx(tx)}>Submit</button></div>
-          }
+          </div>
+          <div>
+            {tx.lostTo && <div>&nbsp;❌&nbsp;<button style={{fontFamily: 'monospace'}} onClick={()=>exploreTx(tx.lostTo)}>{summary(tx.lostTo)}</button></div>}
+            {(!tx.lostTo && contract) && <div>&nbsp;✔️&nbsp;<button style={{fontFamily: 'monospace'}} onClick={()=>submitTx(tx)}>Submit</button></div>}
           </div>
         </div>
       ))}
@@ -714,7 +741,7 @@ function App () {
             }}
           />
         </div>
-        <div>{isLoading ? <div className="lds-dual-ring"></div> : <button onClick={()=>fetchData(true)}>Reload</button>}</div>
+        <div>{isLoading ? <div className="lds-dual-ring"></div> : <button onClick={()=>fetchData(true)}>Rebuild Tx</button>}</div>
         <div>
           {(!btxError&&!btxDisplay) && <div className="lds-dual-ring"></div>}
           {((client || apiKeys.get('BlockCypher')) && !!btxDisplay) && <button onClick={() => sendTx()}>Send</button>}
