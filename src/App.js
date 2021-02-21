@@ -483,6 +483,18 @@ function App () {
         }
         // utxo list exhausted
       }
+
+      function getNetwork (coinType) {
+        const coinInfo = ci(coinType);
+        return {
+            messagePrefix: coinInfo.messagePrefix ? coinInfo.messagePrefix : '',
+            bech32: coinInfo.bech32,
+            bip32: coinInfo.versions.bip32,
+            pubKeyHash: coinInfo.versions.public,
+            scriptHash: coinInfo.versions.scripthash,
+            wif: coinInfo.versions.private,
+        };
+      }
     }
   }, [input, fee, xmine])
 
@@ -618,18 +630,6 @@ function App () {
     window.open(url, '_blank')
   }
 
-  function getNetwork (coinType) {
-    const coinInfo = ci(coinType);
-    return {
-        messagePrefix: coinInfo.messagePrefix ? coinInfo.messagePrefix : '',
-        bech32: coinInfo.bech32,
-        bip32: coinInfo.versions.bip32,
-        pubKeyHash: coinInfo.versions.public,
-        scriptHash: coinInfo.versions.scripthash,
-        wif: coinInfo.versions.private,
-    };
-  }
-
   function submitTx(tx) {
     console.error('submit', tx)
   }
@@ -640,10 +640,11 @@ function App () {
   if (typeof btx === 'string') {
     var btxError = btx
   } else if (btx) {
-    var btxDisplay = decodeTx(btx.buildIncomplete())
+    var btxDisplay = decodeTx(btx)
   }
 
-  function decodeTx(tx) {
+  function decodeTx(btx) {
+    const tx = btx.buildIncomplete()
     let btxDisplay = ''
     for (const {script: s, value: v} of tx.outs) {
       const asm = script.toASM(s)
@@ -651,7 +652,7 @@ function App () {
         btxDisplay += 'OP_RETURN ' + utils.toUtf8String(Buffer.from(asm.substring(10), 'hex'))
         btxDisplay += (v ? ` with ${decShift(v, -8)}\n` : '\n')
       } else {
-        const adr = address.fromOutputScript(s, getNetwork(coinType))
+        const adr = address.fromOutputScript(s, btx.network)
         if (adr !== sender.address) {
           btxDisplay += `${decShift(v, -8)} → ${adr}\n`
         } else {
