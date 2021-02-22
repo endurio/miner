@@ -8,7 +8,6 @@ import { useLocalStorage } from '@rehooks/local-storage'
 import { ethers, utils } from 'ethers'
 import ci from 'coininfo'
 import { ECPair, payments, TransactionBuilder, address, script } from 'bitcoinjs-lib'
-import blockcypher from './lib/blockcypher'
 import BcClient from './lib/BlockchainClient'
 import { decShift } from './lib/big'
 import { summary } from './lib/utils'
@@ -96,10 +95,6 @@ function usePersistent(key, defaultValue) {
 }
 
 function App () {
-  // cache for re-iterate
-  const cacheBlock = {}
-  const cacheTxHex = {}
-
   const [privateKey, setPrivateKey] = usePersistent('privateKey')
   const [apiKeys, setApiKey] = usePersistentMap('apiKeys')
   const coinTypes = ['BTC', 'BTC-TEST']
@@ -123,6 +118,7 @@ function App () {
   const [minerBalance, setMinerBalance] = React.useState()
   const [contract, setContract] = React.useState()
   const [tokenBalance, setTokenBalance] = React.useState()
+  const [sentTx, setSentTx] = React.useState()
 
   // ethereum provider
   React.useEffect(() => {
@@ -164,6 +160,7 @@ function App () {
   // bitcoin client
   React.useEffect(() => {
     const keyType = coinType === 'BTC' ? 'tatum' : 'tatum-test'
+    const network = coinType === 'BTC' ? 'mainnet' : 'testnet'
     const key = apiKeys.get(keyType)
     if (!key) {
       return console.error('no API key provided')
@@ -172,6 +169,8 @@ function App () {
       inBrowser: true,
       chain: 'bitcoin',
       key,
+      BlockCypherKey: apiKeys.get('BlockCypher'),
+      network,
     })
     setClient(client)
   }, [coinType, apiKeys])
@@ -219,114 +218,61 @@ function App () {
     }
     if (!!sender) {
       setSenderBalance(undefined)
-      client.get(`/address/balance/${sender.address}`, (err, data) => {
-        if (err) return console.error(err)
-        const balance = decShift(data.incoming, 8) - decShift(data.outgoing, 8)
-        setSenderBalance(Number(balance))
-      })
+      client.getBalance(sender.address)
+        .then(balance => setSenderBalance(Number(decShift(balance, 8))))
+        .catch(console.error)
     }
-    client.get('/info', (err, data) => {
-      if (err) {
+    client.getInfo()
+      .then(data => {
+        if (!chainHead || chainHead.bestblockhash !== data.bestblockhash) {
+          setChainHead(data)
+        }
+      })
+      .catch(err => {
         console.error(err)
-        return setChainHead(undefined)
-      }
-      if (!chainHead || chainHead.bestblockhash !== data.bestblockhash) {
-        setChainHead(data)
-      }
-    })
-    if (unspent) {
+        setChainHead(undefined)
+      })
+    if (!!unspent) {
       fetchUnspent()
     }
   }
   React.useEffect(fetchData, [sender, client]) // ensures refresh if referential identity of library doesn't change across chainIds
 
-  function fetchUnspent() {
-    if (!sender) {
+  function fetchUnspent(force) {
+    if (!sender || !client) {
       return
     }
-    if (!!apiKeys.get('BlockCypher')) {
-      const bc = blockcypher({
-        inBrowser: true,
-        key: apiKeys.get('BlockCypher'),
-        network: coinType === 'BTC' ? 'mainnet' : 'testnet',
-      })
-      bc.get(`/addrs/${sender.address}?unspentOnly=true`, (err, data) => {
-        if (err) {
-          return console.error(err)
-        }
-        setSenderBalance(data.final_balance)
-        const unspents = data.txrefs
+    if (force) {
+      setUTXOs(undefined)
+    }
+    client.getUnspents(sender.address)
+      .catch(console.error)
+      .then((unspents) => {
         if (shouldUpdate(unspents)) {
           setUTXOs(unspents)
         }
-      })
-    } else if (client) {
-      client.get(`/transaction/address/${sender.address}?pageSize=50`, (err, txs) => {
-        if (err) {
-          return console.error(err)
+        if (unspents.hasOwnProperty('balance')) {
+          setSenderBalance(unspents.balance)
         }
-        const unspents = extractUnspents(txs)
-        if (shouldUpdate(unspents)) {
-          setUTXOs(unspents)
-        }
-        function extractUnspents(txs) {
-          const unspents = []
-          for (const tx of txs) {
-            const u = tx.outputs.reduce((u, o, index) => {
-              if (o.address === sender.address) {
-                const spent = txs.some(t => t.inputs.some(({prevout}) => prevout.hash === tx.hash && prevout.index === index))
-                if (!spent) {
-                  u.push({...o, tx_hash: tx.hash, index})
-                }
-              }
-              return u
-            }, [])
-            unspents.push(...u)
+        function shouldUpdate(unspents) {
+          if (!unspents) return false
+          if (!utxos) return true
+          const newLen = unspents.length
+          if (newLen == utxos.length) {
+            if (newLen == 0) return false  // empty
+            if (unspents[newLen-1].tx_hash == utxos[utxos.length-1].tx_hash) {
+              return false  // no change
+            }
           }
-          return unspents
+          return true
         }
       })
-    }
-    function shouldUpdate(unspents) {
-      if (!unspents) {
-        return false
-      }
-      if (!utxos) {
-        return true
-      }
-      const newLen = unspents.length
-      if (newLen == utxos.length) {
-        if (newLen == 0) {
-          return false  // empty
-        }
-        if (unspents[newLen-1].tx_hash == utxos[utxos.length-1].tx_hash) {
-          return false  // no change
-        }
-      }
-      return true
-    }
   }
   React.useEffect(() => {
     if (!!chainHead) {
       fetchUnspent()
     }
   }, [sender, chainHead])
-
-  async function getBlock(n) {
-    if (!cacheBlock[n]) {
-      try {
-        const block = await new Promise((resolve, reject) =>
-          client.get(`/block/${n}`, (err, data) => err ? reject(err) : resolve(data))
-        )
-        if (block.txs) {
-          cacheBlock[n] = block
-        }
-      } catch(err) {
-        console.error(err)
-      }
-    }
-    return cacheBlock[n]
-  }
 
   React.useEffect(() => {
     if (!client || !chainHead || !utxos) {
@@ -340,9 +286,9 @@ function App () {
       for (const utxo of utxos) {
         utxo.recipients = []
         for (let i = 0; i < maxBlocks; ++i) {
-          const n = chainHead.blocks-i
+          const number = chainHead.blocks-i
           try {
-            const block = await getBlock(n)
+            const block = await client.getBlock(number)
             if (!block) {
               continue  // skip the missing block
             }
@@ -505,64 +451,63 @@ function App () {
     if (manual) {
       setTxs(undefined)
     }
-    client.get(`/transaction/address/${sender.address}?pageSize=50`, (err, data) => {
-      if (err) {
-        return console.error(err)
-      }
-      const now = Math.floor(Date.now() / 1000)
-      const txs = data.filter(tx => {
-        if (now-Number(tx.time) >= 60*60*999) {
-          return false  // too old
+    client.getTxs(sender.address)
+      .catch(console.error)
+      .then(data => {
+        const now = Math.floor(Date.now() / 1000)
+        const txs = data.filter(tx => {
+          if (now-Number(tx.time) >= 60*60*999) {
+            return false  // too old
+          }
+          return tx.outputs.some(out => out.script.startsWith('6a'))
+        })
+        scanTxs(txs).then(setTxs)
+        async function scanTxs(txs) {
+          for (const tx of txs) {
+            const memoScript = tx.outputs.find(o => o.script.startsWith('6a')).script
+            const block = await client.getBlock(tx.blockNumber)
+            const others = block.txs.filter(t => {
+              if (t.hash === tx.hash) {
+                return false
+              }
+              const opret = t.outputs.find(o => o.script.startsWith('6a'))
+              if (!opret) {
+                return false
+              }
+              // TODO: properly check the same memo instead of this lazy check
+              return opret.script.substring(0, 10) == memoScript.substring(0, 10)
+            })
+            if (!others || !others.length) {
+              continue  // no competitors
+            }
+            tx.rank = getRank(block.hash, tx.hash)
+            let bestTx = tx
+            others.forEach(t => {
+              t.rank = getRank(block.hash, t.hash)
+              if (t.rank < bestTx.rank) {
+                bestTx = t
+              }
+            })
+            if (bestTx.hash !== tx.hash) {
+              tx.lostTo = bestTx.hash
+              continue
+            }
+          }
+          // // check whether the tx is already submitted
+          // if (wallet && contract) {
+          //   function getPubX(privateKey) {
+          //     const keyPair = ECPair.fromPrivateKey(Buffer.from(privateKey, 'hex'))
+          //     return keyPair.publicKey.slice(1)
+          //   }
+          //   // wallet exists ensure that both privateKey and provider exists
+          //   const pubX = getPubX(privateKey)
+          //   // TODO: filter event Submit(pubkey: pubX)
+          //   const filter = contract.filters.Submit(null, null, null, pubX)
+          //   wallet.provider.getLogs(filter).then(console.error)
+          // }
+          return txs
         }
-        return tx.outputs.some(out => out.script.startsWith('6a'))
       })
-      scanTxs(txs).then(setTxs)
-      async function scanTxs(txs) {
-        for (const tx of txs) {
-          const memoScript = tx.outputs.find(o => o.script.startsWith('6a')).script
-          const block = await getBlock(tx.blockNumber)
-          const others = block.txs.filter(t => {
-            if (t.hash === tx.hash) {
-              return false
-            }
-            const opret = t.outputs.find(o => o.script.startsWith('6a'))
-            if (!opret) {
-              return false
-            }
-            // TODO: properly check the same memo instead of this lazy check
-            return opret.script.substring(0, 10) == memoScript.substring(0, 10)
-          })
-          if (!others || !others.length) {
-            continue  // no competitors
-          }
-          tx.rank = getRank(block.hash, tx.hash)
-          let bestTx = tx
-          others.forEach(t => {
-            t.rank = getRank(block.hash, t.hash)
-            if (t.rank < bestTx.rank) {
-              bestTx = t
-            }
-          })
-          if (bestTx.hash !== tx.hash) {
-            tx.lostTo = bestTx.hash
-            continue
-          }
-        }
-        // // check whether the tx is already submitted
-        // if (wallet && contract) {
-        //   function getPubX(privateKey) {
-        //     const keyPair = ECPair.fromPrivateKey(Buffer.from(privateKey, 'hex'))
-        //     return keyPair.publicKey.slice(1)
-        //   }
-        //   // wallet exists ensure that both privateKey and provider exists
-        //   const pubX = getPubX(privateKey)
-        //   // TODO: filter event Submit(pubkey: pubX)
-        //   const filter = contract.filters.Submit(null, null, null, pubX)
-        //   wallet.provider.getLogs(filter).then(console.error)
-        // }
-        return txs
-      }
-    })
   }
   React.useEffect(fetchRecent, [chainHead])
 
@@ -582,6 +527,13 @@ function App () {
   }
 
   function sendTx() {
+    if (!client) {
+      throw '!client'
+    }
+    if (!btx) {
+      throw '!btx'
+    }
+
     let tx = btx.buildIncomplete()
     const signed = !tx.ins.some(({script}) => !script || !script.length)
     if (!signed) {
@@ -599,32 +551,17 @@ function App () {
     const txHex = tx.toHex()
     console.log('sending signed tx', txHex)
 
-    if (!!apiKeys.get('BlockCypher')) {
-      const bc = blockcypher({
-        inBrowser: true,
-        key: apiKeys.get('BlockCypher'),
-        network: coinType === 'BTC' ? 'mainnet' : 'testnet',
-      })
-      bc.post('/txs/push', {tx: txHex}, (unknown, res) => {
-        if (res.error) {
-          console.error(res.error)
-        } else {
-          console.log('tx successfully sent', res.tx)
-          exploreTx(res.tx.hash)
-        }
+    setSentTx(undefined)
+    client.sendTx(txHex)
+      .then(tx => {
+        console.log('tx successfully sent', tx)
+        setSentTx(tx.hash || tx.txId)
         fetchUnspent(true)
       })
-    } else if (!!client) {
-      client.post('/broadcast', { txData: txHex }, (err, res) => {
-        if (err) {
-          console.error(err, res)
-        } else {
-          console.log('tx successfully sent', res.txId)
-          exploreTx(res.txId)
-        }
-        fetchUnspent(true)
+      .catch(err => {
+        console.error(err)
+    fetchUnspent(true)
       })
-    }
   }
 
   function exploreTx(hash) {
@@ -750,6 +687,7 @@ function App () {
           {(!btxError&&!btxDisplay) && <div className="lds-dual-ring"></div>}
           {((client || apiKeys.get('BlockCypher')) && !!btxDisplay) && <button onClick={() => sendTx()}>Send</button>}
         </div>
+        {!!sentTx && <div><button onClick={()=>exploreTx(sentTx)}>View Sent Tx</button></div>}
       </div>
       <div className='spacing flex-container'>
         {btxError && <span className="error">{btxError}</span>}
