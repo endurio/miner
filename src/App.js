@@ -504,23 +504,28 @@ function App () {
               continue
             }
           }
-          // // check whether the tx is already submitted
-          // if (wallet && contract) {
-          //   function getPubX(privateKey) {
-          //     const keyPair = ECPair.fromPrivateKey(Buffer.from(privateKey, 'hex'))
-          //     return keyPair.publicKey.slice(1)
-          //   }
-          //   // wallet exists ensure that both privateKey and provider exists
-          //   const pubX = getPubX(privateKey)
-          //   // TODO: filter event Submit(pubkey: pubX)
-          //   const filter = contract.filters.Submit(null, null, null, pubX)
-          //   wallet.provider.getLogs(filter).then(console.error)
-          // }
           return txs
         }
       })
   }
   React.useEffect(fetchRecent, [chainHead])
+
+  function fetchClamable() {
+    // check whether the tx is already submitted
+    if (!wallet || !contract || !txs || !txs.length) {
+      return
+    }
+    const earliest = txs[txs.length-1].time
+    console.log('query for submitted transaction')
+    // wallet exists ensure that both privateKey and provider exists
+    const pubX = '0x' + wallet.publicKey.substr(4, 64)
+    // TODO: filter event Submit(pubkey: pubX)
+    const filter = contract.filters.Submit(null, null, null, pubX)
+    filter.fromBlock = 9713529
+    console.error(filter)
+    wallet.provider.getLogs(filter).then(console.error)
+  }
+  React.useEffect(fetchClamable, [wallet, contract, txs])
 
   function promptForKey(key) {
     Prompt(`API key for ${key}:`, {
