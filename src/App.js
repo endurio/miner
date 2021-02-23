@@ -569,8 +569,8 @@ function App () {
         fetchUnspent(true)
       })
       .catch(err => {
-        console.error(err)
-    fetchUnspent(true)
+        fetchUnspent(true)
+        alert(err)
       })
   }
 
@@ -589,18 +589,18 @@ function App () {
       const {params, outpoint, bounty} = await prepareSubmitTx(client, {tx})
       // emulate call
       let res = await contract.callStatic.submit(params, outpoint, bounty)
-        .catch(res => console.error(extractErrorMessage(res)))
+        .catch(res => alert(extractErrorMessage(res)))
       if (!res) {
         return
       }
       // actuall transaction
       res = await contract.callStatic.submit(params, outpoint, bounty)
-        .catch(res => console.error(extractErrorMessage(res)))
+        .catch(res => alert(extractErrorMessage(res)))
       if (res) {
         console.error('success', res)
       }
     } catch (err) {
-      console.error(err)
+      alert(err)
     } finally {
       setSending(tx.hash)
     }
