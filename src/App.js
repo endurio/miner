@@ -10,20 +10,14 @@ import ci from 'coininfo'
 import { ECPair, payments, TransactionBuilder, address, script } from 'bitcoinjs-lib'
 import BcClient from './lib/BlockchainClient'
 import { decShift } from './lib/big'
-import { summary } from './lib/utils'
+import { summary, extractErrorMessage } from './lib/utils'
+import { isHit, prepareSubmitTx } from './lib/por'
+const { keccak256, computeAddress } = ethers.utils
 
 const IMPLEMENTATIONS = ['Endurio', 'PoR', 'RefNetwork', 'BrandMarket']
 const CONTRACT_ABI = IMPLEMENTATIONS.reduce((abi, i) => abi.concat(require(`./abis/${i}.json`).abi), [])
 const CONTRACT_ADDRESS = {
   Ropsten: '0x0252d8DFd20938f5bd314dEd7f03Cd82070Dc1cc',
-}
-
-const { keccak256, computeAddress } = ethers.utils
-
-function isHit(txid, recipient) {
-  // use (recipient+txid).reverse() for LE(txid)+LE(recipient)
-  const hash = keccak256(Buffer.from(recipient+txid, 'hex').reverse())
-  return BigInt(hash) % 32n === 0n
 }
 
 function getRank(blockHash, txid) {
@@ -59,6 +53,21 @@ function getSender(privateKey, coinType) {
   }
   const keyPair = ECPair.fromPrivateKey(Buffer.from(privateKey, 'hex'))
   return payments.p2pkh({pubkey: keyPair.publicKey, network})
+}
+
+function useMap(defaultMap) {
+  const [value, setValue] = React.useState(new Map(Object.entries(defaultMap||{})))
+  return [value, (k, v) =>
+    setValue(prev => {
+      const map = new Map(prev)
+      if (typeof v === 'undefined') {
+        map.delete(k)
+      } else {
+        map.set(k, v)
+      }
+      return map
+    })
+  ]
 }
 
 function usePersistentMap(key, defaultMap) {
@@ -119,6 +128,7 @@ function App () {
   const [contract, setContract] = React.useState()
   const [tokenBalance, setTokenBalance] = React.useState()
   const [sentTx, setSentTx] = React.useState()
+  const [sending, setSending] = useMap({})
 
   // ethereum provider
   React.useEffect(() => {
@@ -279,6 +289,7 @@ function App () {
       return
     }
 
+    setInput(undefined)
     searchForBountyInput(utxos).then(setInput)
 
     async function searchForBountyInput(utxos, maxBlocks = 6) {
@@ -364,15 +375,14 @@ function App () {
           return false
         }
         const tx = tb.buildIncomplete()
-        const txSize = tx.toBuffer().length + 107 // at least 107 bytes signature
-        const inputSize = 32 + 4 + 107 + 4
+        const txSize = tx.toBuffer().length + 1+106 // minimum 106 bytes redeem script
+        const inputSize = 32 + 4 + 1+108 + 4        // give redeem script some extra bytes for tolerancy
         // assume that the first output is OP_RET and the last is the coin change
         for (let i = 1; i < tx.outs.length-1; ++i) {
           const out = tx.outs[i]
-          const outputSize = out.script.length + 9
+          const outputSize = 8 + 1 + out.script.length
           const minTxSize = 10 + inputSize + outputSize
-          const minAmount = Math.floor(minTxSize * txFee / txSize)
-          if (out.value < minAmount) {
+          if (txFee * minTxSize > out.value * txSize) {
             return false
           }
         }
@@ -570,8 +580,30 @@ function App () {
     window.open(url, '_blank')
   }
 
-  function submitTx(tx) {
-    console.error('submit', tx)
+  async function submitTx(tx) {
+    if (sending.get(tx.hash)) throw 'tx is already sending'
+    if (!client) throw '!client'
+    if (!contract) throw '!contract'
+    setSending(tx.hash, true)
+    try {
+      const {params, outpoint, bounty} = await prepareSubmitTx(client, {tx})
+      // emulate call
+      let res = await contract.callStatic.submit(params, outpoint, bounty)
+        .catch(res => console.error(extractErrorMessage(res)))
+      if (!res) {
+        return
+      }
+      // actuall transaction
+      res = await contract.callStatic.submit(params, outpoint, bounty)
+        .catch(res => console.error(extractErrorMessage(res)))
+      if (res) {
+        console.error('success', res)
+      }
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setSending(tx.hash)
+    }
   }
 
   // statuses
@@ -635,7 +667,7 @@ function App () {
         {!isLoading && <span>{decShift(senderBalance, -8)} {coinType}</span>}
       </div>
       <div className="spacing flex-container">
-        <div>Recent Mined Transactions</div>
+        <div>Recently Mined Transactions</div>
         <div>{txs ? <button onClick={()=>fetchRecent(true)}>Reload</button> : <div className="lds-dual-ring"></div>}</div>
       </div>
       {txs && txs.map(tx => (
@@ -645,7 +677,11 @@ function App () {
           </div>
           <div>
             {tx.lostTo && <div>&nbsp;❌&nbsp;<button style={{fontFamily: 'monospace'}} onClick={()=>exploreTx(tx.lostTo)}>{summary(tx.lostTo)}</button></div>}
-            {(!tx.lostTo && contract) && <div>&nbsp;✔️&nbsp;<button style={{fontFamily: 'monospace'}} onClick={()=>submitTx(tx)}>Submit</button></div>}
+            {(!tx.lostTo && contract) && <div>&nbsp;✔️&nbsp;{
+              sending.get(tx.hash) ?
+                <div className="lds-dual-ring"></div> :
+                <button onClick={()=>submitTx(tx)}>Submit</button>
+            }</div>}
           </div>
         </div>
       ))}
@@ -682,12 +718,12 @@ function App () {
             }}
           />
         </div>
-        <div>{isLoading ? <div className="lds-dual-ring"></div> : <button onClick={()=>fetchData(true)}>Rebuild Tx</button>}</div>
+        <div>{isLoading ? <div className="lds-dual-ring"></div> : <button onClick={()=>fetchData(true)}>Rebuild</button>}</div>
         <div>
           {(!btxError&&!btxDisplay) && <div className="lds-dual-ring"></div>}
           {((client || apiKeys.get('BlockCypher')) && !!btxDisplay) && <button onClick={() => sendTx()}>Send</button>}
         </div>
-        {!!sentTx && <div><button onClick={()=>exploreTx(sentTx)}>View Sent Tx</button></div>}
+        {!!sentTx && <div><button onClick={()=>exploreTx(sentTx)}>Show Last Tx</button></div>}
       </div>
       <div className='spacing flex-container'>
         {btxError && <span className="error">{btxError}</span>}
