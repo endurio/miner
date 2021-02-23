@@ -82,3 +82,11 @@
     transform: rotate(360deg);
   }
 }
+
+/* cleaner transition animation for react-st-modal */
+:root {
+  --st-overlay-transition: opacity 0.1s ease-out !important;
+  --st-modal-transition: opacity 0.1s ease-out !important;
+  --st-modal-transformVisible: translate(-50%, -50%) !important;
+  --st-modal-transformHidden: translate(100%, 100%) !important;
+}

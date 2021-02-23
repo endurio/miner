@@ -12,6 +12,7 @@ import BcClient from './lib/BlockchainClient'
 import { decShift } from './lib/big'
 import { summary, extractErrorMessage } from './lib/utils'
 import { isHit, prepareSubmitTx } from './lib/por'
+import { Alert, Prompt } from 'react-st-modal'
 const { keccak256, computeAddress } = ethers.utils
 
 const IMPLEMENTATIONS = ['Endurio', 'PoR', 'RefNetwork', 'BrandMarket']
@@ -522,18 +523,24 @@ function App () {
   React.useEffect(fetchRecent, [chainHead])
 
   function promptForKey(key) {
-    const value = window.prompt(`API key for ${key}:`, apiKeys.get(key))
-    if (value != null) {
-      setApiKey(key, value)
-    }
+    Prompt(`API key for ${key}:`, {
+      defaultValue: apiKeys.get(key),
+    }).then(value => {
+      if (value != null) {
+        setApiKey(key, value)
+      }
+    }, console.error)
   }
 
   function promptForPrivateKey(exists) {
     const defaultValue = '***'
-    const value = window.prompt(`Input your private key in hex here. (Your private key never leaves your browser)`, exists ? defaultValue : '')
-    if (value != null && value != defaultValue) {
-      setPrivateKey(value)
-    }
+    Prompt(`Input your private key here (in hex format without 0x prefix). It stays only in your browser.`, {
+      defaultValue: exists ? defaultValue : '',
+    }).then(value => {
+      if (value != null && value != defaultValue) {
+        setPrivateKey(value)
+      }
+    }, console.error)
   }
 
   function sendTx() {
@@ -570,7 +577,7 @@ function App () {
       })
       .catch(err => {
         fetchUnspent(true)
-        alert(err)
+        Alert(err, 'Transaction Sending Error')
       })
   }
 
@@ -589,18 +596,18 @@ function App () {
       const {params, outpoint, bounty} = await prepareSubmitTx(client, {tx})
       // emulate call
       let res = await contract.callStatic.submit(params, outpoint, bounty)
-        .catch(res => alert(extractErrorMessage(res)))
+        .catch(res => Alert(extractErrorMessage(res), 'Transaction Verification Error'))
       if (!res) {
         return
       }
       // actuall transaction
       res = await contract.callStatic.submit(params, outpoint, bounty)
-        .catch(res => alert(extractErrorMessage(res)))
+        .catch(res => Alert(extractErrorMessage(res), 'Transaction Submitting Error'))
       if (res) {
         console.error('success', res)
       }
     } catch (err) {
-      alert(err)
+      Alert(err, 'Transaction Submitting Error')
     } finally {
       setSending(tx.hash)
     }
