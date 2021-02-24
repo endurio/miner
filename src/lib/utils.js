@@ -1,5 +1,9 @@
 /* global BigInt */
 
+function strip0x(s) {
+  return s.startsWith('0x') ? s.substring(2) : s
+}
+
 function summary(address, firstSegLength = 6, lastSegLength = 6, includeHex = true) {
   try {
     if (!address) return ''
@@ -26,6 +30,7 @@ function extractErrorMessage(error) {
 }
 
 module.exports = {
+  strip0x,
   summary,
   extractErrorMessage,
 }

@@ -12,6 +12,21 @@ function isHit(txid, recipient) {
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
 
+function prepareClaimParams(args, pubX, pubY) {
+  const { blockHash, memoHash, payer, amount, timestamp } = args;
+  const isPKH = args.pubkey.substring(2+40) == '000000000000000000000000'
+  const params = {
+    blockHash, memoHash, payer,
+    amount: amount.toString(),
+    timestamp: timestamp.toString(),
+    isPKH,
+    pubX,
+    pubY,
+    skipCommission: false,
+  }
+  return params;
+}
+
 async function prepareSubmitTx(client, txParams, outpointParams, bountyParams) {
   const params = await _prepareSubmitParams(txParams)
   if (params.pubkeyPos) {
@@ -257,6 +272,7 @@ if (!String.prototype.reverseHex) {
 }
 
 module.exports = {
-  isHit,
+  prepareClaimParams,
   prepareSubmitTx,
+  isHit,
 }

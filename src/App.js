@@ -10,8 +10,8 @@ import ci from 'coininfo'
 import { ECPair, payments, TransactionBuilder, address, script } from 'bitcoinjs-lib'
 import BcClient from './lib/BlockchainClient'
 import { decShift } from './lib/big'
-import { summary, extractErrorMessage } from './lib/utils'
-import { isHit, prepareSubmitTx } from './lib/por'
+import { strip0x, summary, extractErrorMessage } from './lib/utils'
+import { prepareClaimParams, prepareSubmitTx, isHit } from './lib/por'
 import { Alert, Prompt } from 'react-st-modal'
 const { keccak256, computeAddress } = ethers.utils
 
@@ -129,7 +129,9 @@ function App () {
   const [contract, setContract] = React.useState()
   const [tokenBalance, setTokenBalance] = React.useState()
   const [sentTx, setSentTx] = React.useState()
-  const [sending, setSending] = useMap({})
+  const [submitting, setSubmitting] = useMap({})
+  const [claimables, setClaimables] = React.useState()
+  const [claiming, setClaiming] = useMap({})
 
   // ethereum provider
   React.useEffect(() => {
@@ -361,14 +363,14 @@ function App () {
     search(1, txFee).then(setBtx)
 
     // binary search
-    async function search(start, end) {
-      if (start > end) return
+    async function search(start, end, last) {
+      if (start > end) return last || await build(end)
       const mid = Math.floor((start + end)/2)
       const tb = await build(mid)
       if (isValid(tb)) {
-        return await search(start, mid-1) || tb
+        return await search(start, mid-1, tb)
       } else {
-        return await search(mid+1, end)
+        return await search(mid+1, end, last)
       }
 
       function isValid(tb) {
@@ -510,22 +512,56 @@ function App () {
   }
   React.useEffect(fetchRecent, [chainHead])
 
-  function fetchClamable() {
+  async function fetchClamables(manual) {
     // check whether the tx is already submitted
-    if (!wallet || !contract || !txs || !txs.length) {
+    if (!wallet || !contract) {
       return
     }
-    const earliest = txs[txs.length-1].time
-    console.log('query for submitted transaction')
+
+    if (manual) {
+      setClaimables(undefined)
+    }
+
+    const latest = await wallet.provider.getBlockNumber()
+
     // wallet exists ensure that both privateKey and provider exists
-    const pubX = '0x' + wallet.publicKey.substr(4, 64)
+    const pubX = '0x' + strip0x(wallet.publicKey).substr(2, 64)
+    const pubY = '0x' + strip0x(wallet.publicKey).substr(64+2)
     // TODO: filter event Submit(pubkey: pubX)
     const filter = contract.filters.Submit(null, null, null, pubX)
-    filter.fromBlock = 9713529
-    console.error(filter)
-    wallet.provider.getLogs(filter).then(console.error)
+    filter.fromBlock = latest - 60000
+    const logs = await wallet.provider.getLogs(filter)
+    const claimableLogs = []
+    for (const log of logs) {
+      const desc = contract.interface.parseLog(log)
+      const params = prepareClaimParams(desc.args, pubX, pubY)
+      try {
+        await contract.callStatic.claim(params)
+        claimableLogs.push({...log, desc, params})
+      } catch (err) {
+        console.log('unclaimable', err)
+      }
+    }
+    setClaimables(claimableLogs)
   }
-  React.useEffect(fetchClamable, [wallet, contract, txs])
+  React.useEffect(fetchClamables, [wallet, contract])
+
+  async function claimTx(log) {
+    // check whether the tx is already submitted
+    if (!wallet || !contract) {
+      return Alert('!wallet || !contract', 'Claim Error')
+    }
+
+    setClaiming(log.transactionHash, true)
+    try {
+      const res = await contract.claim(log.params)
+      console.error(res)
+    } catch(err) {
+      Alert(err, 'Claim Error')
+    } finally {
+      setClaiming(log.transactionHash, undefined)
+    }
+  }
 
   function promptForKey(key) {
     Prompt(`API key for ${key}:`, {
@@ -592,11 +628,16 @@ function App () {
     window.open(url, '_blank')
   }
 
+  function exploreTxEth(hash) {
+    const url = `https://${network.toLowerCase()}.etherscan.io/tx/${hash}`
+    window.open(url, '_blank')
+  }
+
   async function submitTx(tx) {
-    if (sending.get(tx.hash)) throw 'tx is already sending'
+    if (submitting.get(tx.hash)) throw 'tx is already sending'
     if (!client) throw '!client'
     if (!contract) throw '!contract'
-    setSending(tx.hash, true)
+    setSubmitting(tx.hash, true)
     try {
       const {params, outpoint, bounty} = await prepareSubmitTx(client, {tx})
       // emulate call
@@ -614,7 +655,7 @@ function App () {
     } catch (err) {
       Alert(err, 'Transaction Submitting Error')
     } finally {
-      setSending(tx.hash)
+      setSubmitting(tx.hash)
     }
   }
 
@@ -679,6 +720,22 @@ function App () {
         {!isLoading && <span>{decShift(senderBalance, -8)} {coinType}</span>}
       </div>
       <div className="spacing flex-container">
+        <div>Claimable Reward</div>
+        <div>{claimables ? <button onClick={()=>fetchClamables(true)}>Reload</button> : <div className="lds-dual-ring"></div>}</div>
+      </div>
+      {claimables && claimables.map(log => (
+        <div className="spacing flex-container" key={log.blockHash} style={{marginLeft: '2em'}}>
+          <div className="flex-container">
+            <button style={{fontFamily: 'monospace'}} onClick={()=>exploreTxEth(log.transactionHash)}>{summary(strip0x(log.transactionHash))}</button>
+          </div>
+          <div>{decShift(log.desc.args.amount.toString(), -18)} <a target='blank' href={`https://${network.toLowerCase()}.etherscan.io/address/${CONTRACT_ADDRESS[network]}`}>END</a></div>
+          <div>{claiming.get(log.transactionHash) ?
+            <div className="lds-dual-ring"></div> :
+            <button onClick={()=>claimTx(log)}>Claim</button>
+          }</div>
+        </div>
+      ))}
+      <div className="spacing flex-container">
         <div>Recently Mined Transactions</div>
         <div>{txs ? <button onClick={()=>fetchRecent(true)}>Reload</button> : <div className="lds-dual-ring"></div>}</div>
       </div>
@@ -690,7 +747,7 @@ function App () {
           <div>
             {tx.lostTo && <div>&nbsp;❌&nbsp;<button style={{fontFamily: 'monospace'}} onClick={()=>exploreTx(tx.lostTo)}>{summary(tx.lostTo)}</button></div>}
             {(!tx.lostTo && contract) && <div>&nbsp;✔️&nbsp;{
-              sending.get(tx.hash) ?
+              submitting.get(tx.hash) ?
                 <div className="lds-dual-ring"></div> :
                 <button onClick={()=>submitTx(tx)}>Submit</button>
             }</div>}
