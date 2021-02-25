@@ -464,8 +464,14 @@ function App () {
       .then(data => {
         const now = Math.floor(Date.now() / 1000)
         const txs = data.filter(tx => {
-          if (now-Number(tx.time) >= 60*60) {
-            return false  // too old
+          if (now-Number(tx.time) >= 60*60) { // too old
+            const pending = mapSentTx.get(tx.hash)
+            if (!!pending) {
+              // clear the pending tx too
+              console.warn('obsoleted transaction', pending)
+              setSentTx(tx.hash, undefined)
+          }
+            return false 
           }
           return tx.outputs.some(out => out.script.startsWith('6a'))
         })
