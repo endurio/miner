@@ -203,7 +203,7 @@ function App () {
       setMiner(undefined)
     }
   }, [privateKey])
-  
+
   // sender
   React.useEffect(() => {
     if (!privateKey || !coinType) {
@@ -617,7 +617,7 @@ function App () {
           setMiner(undefined)
           setPrivateKey(undefined)
           return
-      }
+        }
         try {
           computeAddress(Buffer.from(privateKey, 'hex'))
           setPrivateKey(privateKey)
@@ -747,7 +747,7 @@ function App () {
 
   return (
     <div className="App">
-      <div className="spacing flex-container">
+      <div className="spacing flex-container header">
         <div className="flex-container">
           <span>&nbsp;{privateKey ? '✅' : '❌'}<button onClick={() => promptForPrivateKey(!!privateKey)}>Private Key</button></span>
         </div>
@@ -766,22 +766,22 @@ function App () {
         </div>
         {!!miner && <span className="ellipsis">Miner: {miner}</span>}
         {!minerBalance && <div><div className="lds-dual-ring"></div></div>}
-        {minerBalance && <span>{decShift(minerBalance, -18)} <a target='blank' href={`https://${network.toLowerCase()}.etherscan.io/address/${miner}`}>ETH</a></span>}
-        {tokenBalance && <span>{decShift(tokenBalance, -18)} <a target='blank' href={`https://${network.toLowerCase()}.etherscan.io/token/${CONTRACT_ADDRESS[network]}?a=${miner}`}>END</a></span>}
       </div>
+      {minerBalance && <div className="spacing flex-container indent"><span>{decShift(minerBalance, -18)} <a target='blank' href={`https://${network.toLowerCase()}.etherscan.io/address/${miner}`}>ETH</a></span></div>}
+      {tokenBalance && <div className="spacing flex-container indent"><span>{decShift(tokenBalance, -18)} <a target='blank' href={`https://${network.toLowerCase()}.etherscan.io/token/${CONTRACT_ADDRESS[network]}?a=${miner}`}>END</a></span></div>}
       <div className="spacing flex-container">
         <div className="flex-container">
           Coin:&nbsp;<Dropdown options={coinTypes} onChange={item=>setCoinType(item.value)} value={coinType} placeholder="Mining coin" />
         </div>
         {!!sender && <span className="ellipsis">Sender: {sender.address}</span>}
-        {!isLoading && <span>{decShift(senderBalance, -8)} {coinType}</span>}
       </div>
+      {!isLoading && <div className="spacing flex-container indent"><span>{decShift(senderBalance, -8)} {coinType}</span></div>}
       <div className="spacing flex-container">
         <div>Claimable Reward</div>
         <div>{listClaimableTx ? <button onClick={()=>fetchClamables(true)}>Reload</button> : <div className="lds-dual-ring"></div>}</div>
       </div>
       {listClaimableTx && listClaimableTx.map(log => ((!mapClaimedTx || !mapClaimedTx.get(log.transactionHash)) &&
-        <div className="spacing flex-container" key={log.blockHash} style={{marginLeft: '2em'}}>
+        <div className="spacing flex-container indent" key={log.blockHash}>
           <div className="flex-container">
             <button style={{fontFamily: 'monospace'}} onClick={()=>exploreTxEth(log.transactionHash)}>{summary(strip0x(log.transactionHash))}</button>
           </div>
@@ -797,7 +797,7 @@ function App () {
         <div>{listConfirmedTx ? <button onClick={()=>fetchRecent(true)}>Reload</button> : <div className="lds-dual-ring"></div>}</div>
       </div>
       {listConfirmedTx && listConfirmedTx.map(tx => (!mapSubmittedTx.get(tx.hash) &&
-        <div className="spacing flex-container" key={tx.hash} style={{marginLeft: '2em'}}>
+        <div className="spacing flex-container indent" key={tx.hash}>
           <div className="flex-container">
             <button style={{fontFamily: 'monospace'}} onClick={()=>exploreTx(tx.hash)}>{summary(tx.hash)}</button>
           </div>
@@ -817,7 +817,7 @@ function App () {
       <div className="spacing flex-container">
         <div>Pending Transactions</div>
       </div>
-      {(mapSentTx && mapSentTx.size > 0) && <div className="spacing flex-container" style={{marginLeft: '2em'}}>
+      {(mapSentTx && mapSentTx.size > 0) && <div className="spacing flex-container indent">
         {Array.from(mapSentTx.values()).map(tx => ((!listConfirmedTx || !listConfirmedTx.some(t => t.hash == tx.hash)) &&
             <div className="flex-container" key={tx.hash}>
               <button style={{fontFamily: 'monospace'}} onClick={()=>exploreTx(tx.hash)}>{summary(tx.hash)}</button>
@@ -863,7 +863,7 @@ function App () {
           {((client || apiKeys.get('BlockCypher')) && !!btxDisplay) && <button onClick={() => doSend()}>Send</button>}
         </div>
       </div>
-      <div className='spacing flex-container'>
+      <div className='spacing flex-container indent'>
         {btxError && <span className="error">{btxError}</span>}
         {btxDisplay && <pre>{btxDisplay}</pre>}
       </div>
