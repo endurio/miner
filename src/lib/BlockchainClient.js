@@ -171,9 +171,9 @@ function BlockchainClient(opts) {
         })
       })
     },
-    getTxs(address, pageSize=50) {
+    getTxs(address, pageSize=50, offset=0) {
       return new Promise((resolve, reject) => {
-        this.get(`/transaction/address/${address}?pageSize=${pageSize}`, (err, txs) => {
+        this.get(`/transaction/address/${address}?pageSize=${pageSize}&offset=${offset}`, (err, txs) => {
           if (err) return reject(err)
           return resolve(txs)
         })
