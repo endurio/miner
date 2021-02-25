@@ -856,6 +856,14 @@ function App () {
         {btxError && <span className="error">{btxError}</span>}
         {btxDisplay && <pre>{btxDisplay}</pre>}
       </div>
+      <div className='spacing flex-container footer'>
+        <div><a href='/'>Home</a></div>
+        <div><a href='/doc'>Documentation</a></div>
+        <div><a target='_blank' rel='noreferrer' href='https://opensource.org/licenses/MIT'>License</a></div>
+        <div><a target='_blank' rel='noreferrer' href='https://github.com/endurio/miner'>Source</a></div>
+        <div><a target='_blank' rel='noreferrer' href='https://github.com/endurio/miner/issues'>Bug Report</a></div>
+        <div><a target='_blank' rel='noreferrer' href='mailto:zergity@endur.io'>Contact Developer</a></div>
+      </div>
     </div>
   )
 }
