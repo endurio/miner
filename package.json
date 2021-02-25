@@ -5,6 +5,7 @@
     "name": "Zergity",
     "email": "zergity@endur.io"
   },
+  "homepage": "./",
   "private": true,
   "dependencies": {
     "@rehooks/local-storage": "^2.4.0",
