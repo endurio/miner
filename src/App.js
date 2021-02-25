@@ -108,9 +108,9 @@ function App () {
   const [privateKey, setPrivateKey] = usePersistent('privateKey')
   const [apiKeys, setApiKey] = usePersistentMap('apiKeys')
   const coinTypes = ['BTC', 'BTC-TEST']
-  const [coinType, setCoinType] = usePersistent('cointype', coinTypes[1])
-  const networks = ['Ethereum', 'Ropsten']
-  const [network, setNetwork] = usePersistent('network', networks[1])
+  const [coinType, setCoinType] = usePersistent('cointype', coinTypes[coinTypes.length-1])
+  const networks = [/*'Ethereum',*/ 'Ropsten']
+  const [network, setNetwork] = usePersistent('network', networks[networks.length-1])
   const [miner, setMiner] = React.useState()
   const [sender, setSender] = React.useState()
   const [maxBounty, setMaxBounty] = usePersistent('maxBounty', 8)
