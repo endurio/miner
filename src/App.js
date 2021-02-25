@@ -790,7 +790,7 @@ function App () {
             href='https://en.bitcoin.it/wiki/Testnet#:~:text=if%20no%20block%20has%20been%20found%20in%2020%20minutes,%20the%20difficulty%20automatically%20resets%20back%20to%20the%20minimum%20for%20a%20single%20block'
             >minimum reward</a>
           </div>}
-          {(contract /*&& !tx.lostTo && !tx.submitError && !tx.minimumReward*/) && <div>&nbsp;✔️&nbsp;{
+          {(contract && !tx.lostTo && !tx.submitError && !tx.minimumReward) && <div>&nbsp;✔️&nbsp;{
             isSubmitting.get(tx.hash) ?
               <div className="lds-dual-ring"></div> :
               <button onClick={()=>doSubmit(tx)}>Submit</button>
