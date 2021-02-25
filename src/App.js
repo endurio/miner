@@ -261,23 +261,9 @@ function App () {
     client.getUnspents(sender.address)
       .catch(console.error)
       .then((unspents) => {
-        if (shouldUpdate(unspents)) {
           setUTXOs(unspents)
-        }
         if (unspents.hasOwnProperty('balance')) {
           setSenderBalance(unspents.balance)
-        }
-        function shouldUpdate(unspents) {
-          if (!unspents) return false
-          if (!utxos) return true
-          const newLen = unspents.length
-          if (newLen == utxos.length) {
-            if (newLen == 0) return false  // empty
-            if (unspents[newLen-1].tx_hash == utxos[utxos.length-1].tx_hash) {
-              return false  // no change
-            }
-          }
-          return true
         }
       })
   }
@@ -293,7 +279,10 @@ function App () {
     }
 
     setInput(undefined)
+    setBtx(undefined)
+    if (utxos.length) {
     searchForBountyInput(utxos).then(setInput)
+    }
 
     async function searchForBountyInput(utxos, maxBlocks = 6) {
       // utxos = [(utxos||[])[0]]  // only use the first UTXO for the blockcypher limit
@@ -334,7 +323,7 @@ function App () {
           }
         }
       }
-      const utxoWithMostRecipient = utxos.reduce((prev, current) => (prev.recipients||[]).length > (current.recipients||[]).length ? prev : current, [])
+      const utxoWithMostRecipient = utxos.reduce((prev, current) => (prev.recipients||[]).length > (current.recipients||[]).length ? prev : current, {})
       console.log('use the best UTXO found', utxoWithMostRecipient)
       return utxoWithMostRecipient
     }
@@ -550,7 +539,7 @@ function App () {
   }
   React.useEffect(fetchClamables, [wallet, contract])
 
-  async function claimTx(log) {
+  async function doClaim(log) {
     // check whether the tx is already submitted
     if (!wallet || !contract) {
       return Alert('!wallet || !contract', 'Claim Error')
@@ -588,13 +577,15 @@ function App () {
     }, console.error)
   }
 
-  function sendTx() {
+  async function doSend() {
     if (!client) {
       throw '!client'
     }
     if (!btx) {
       throw '!btx'
     }
+
+    setSentTx(undefined)
 
     let tx = btx.buildIncomplete()
     const signed = !tx.ins.some(({script}) => !script || !script.length)
@@ -613,7 +604,6 @@ function App () {
     const txHex = tx.toHex()
     console.log('sending signed tx', txHex)
 
-    setSentTx(undefined)
     client.sendTx(txHex)
       .then(tx => {
         console.log('tx successfully sent', tx)
@@ -637,7 +627,7 @@ function App () {
     window.open(url, '_blank')
   }
 
-  async function submitTx(tx) {
+  async function doSubmit(tx) {
     if (submitting.get(tx.hash)) throw 'tx is already sending'
     if (!client) throw '!client'
     if (!contract) throw '!contract'
@@ -654,7 +644,7 @@ function App () {
       res = await contract.callStatic.submit(params, outpoint, bounty)
         .catch(res => Alert(extractErrorMessage(res), 'Transaction Submitting Error'))
       if (res) {
-        console.error('success', res)
+        console.log('success', res)
       }
     } catch (err) {
       Alert(err, 'Transaction Submitting Error')
@@ -735,12 +725,12 @@ function App () {
           <div>{decShift(log.desc.args.amount.toString(), -18)} <a target='blank' href={`https://${network.toLowerCase()}.etherscan.io/address/${CONTRACT_ADDRESS[network]}`}>END</a></div>
           <div>{claiming.get(log.transactionHash) ?
             <div className="lds-dual-ring"></div> :
-            <button onClick={()=>claimTx(log)}>Claim</button>
+            <button onClick={()=>doClaim(log)}>Claim</button>
           }</div>
         </div>
       ))}
       <div className="spacing flex-container">
-        <div>Recently Mined Transactions</div>
+        <div>Submittable Transactions</div>
         <div>{txs ? <button onClick={()=>fetchRecent(true)}>Reload</button> : <div className="lds-dual-ring"></div>}</div>
       </div>
       {txs && txs.map(tx => (
@@ -753,7 +743,7 @@ function App () {
             {(!tx.lostTo && contract) && <div>&nbsp;✔️&nbsp;{
               submitting.get(tx.hash) ?
                 <div className="lds-dual-ring"></div> :
-                <button onClick={()=>submitTx(tx)}>Submit</button>
+                <button onClick={()=>doSubmit(tx)}>Submit</button>
             }</div>}
           </div>
           {!!tx.minimumReward && <div><a target='_blank'
@@ -798,9 +788,9 @@ function App () {
         <div>{isLoading ? <div className="lds-dual-ring"></div> : <button onClick={()=>fetchData(true)}>Rebuild</button>}</div>
         <div>
           {(!btxError&&!btxDisplay) && <div className="lds-dual-ring"></div>}
-          {((client || apiKeys.get('BlockCypher')) && !!btxDisplay) && <button onClick={() => sendTx()}>Send</button>}
+          {((client || apiKeys.get('BlockCypher')) && !!btxDisplay) && <button onClick={() => doSend()}>Send</button>}
         </div>
-        {!!sentTx && <div><button onClick={()=>exploreTx(sentTx)}>Show Last Tx</button></div>}
+        {!!sentTx && <div><button onClick={()=>exploreTx(sentTx)}>Show Last Sent</button></div>}
       </div>
       <div className='spacing flex-container'>
         {btxError && <span className="error">{btxError}</span>}

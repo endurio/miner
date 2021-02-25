@@ -143,7 +143,7 @@ function BlockchainClient(opts) {
         if (!!bc) {
           bc.get(`/addrs/${address}?unspentOnly=true`, (err, data) => {
             if (err) return reject(err)
-            const unspents = data.txrefs
+            const unspents = data.txrefs || []
             unspents.balance = data.final_balance
             return resolve(unspents)
           })
