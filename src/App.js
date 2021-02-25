@@ -504,6 +504,10 @@ function App () {
             if (bestTx.hash !== tx.hash) {
               tx.lostTo = bestTx.hash
               continue
+            } else {
+              if (block.bits === 0x1d00ffff) {
+                tx.minimumReward = true
+              }
             }
           }
           return txs
@@ -752,6 +756,10 @@ function App () {
                 <button onClick={()=>submitTx(tx)}>Submit</button>
             }</div>}
           </div>
+          {!!tx.minimumReward && <div><a target='_blank'
+            href='https://en.bitcoin.it/wiki/Testnet#:~:text=if%20no%20block%20has%20been%20found%20in%2020%20minutes,%20the%20difficulty%20automatically%20resets%20back%20to%20the%20minimum%20for%20a%20single%20block'
+            >minimum reward</a>
+          </div>}
         </div>
       ))}
       <div className="spacing flex-container">
