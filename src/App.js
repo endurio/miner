@@ -308,7 +308,11 @@ function App () {
                 if (hasOpRet) {
                   continue
                 }
-                // TODO: check and skip existing address/script
+                const recipient = tx.outputs[tx.outputs.length-1].address
+                if (utxo.recipients.some(t => recipient == t.outputs[t.outputs.length-1].address)) {
+                  // duplicate recipient
+                  continue
+                }
                 utxo.recipients.push(tx)
                 if (utxo.recipients.length >= maxBounty) {
                   console.log(`found the first UTXO with enough ${maxBounty} bounty outputs`)
@@ -520,7 +524,6 @@ function App () {
     // wallet exists ensure that both privateKey and provider exists
     const pubX = '0x' + strip0x(wallet.publicKey).substr(2, 64)
     const pubY = '0x' + strip0x(wallet.publicKey).substr(64+2)
-    // TODO: filter event Submit(pubkey: pubX)
     const filter = contract.filters.Submit(null, null, null, pubX)
     filter.fromBlock = latest - 60000
     const logs = await wallet.provider.getLogs(filter)
