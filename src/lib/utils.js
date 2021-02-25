@@ -29,8 +29,18 @@ function extractErrorMessage(error) {
   return error.message || error
 }
 
+function extractReason(error) {
+  error = extractErrorMessage(error)
+  const matches = error.match(/reason="(.*)"/)
+  if (matches && matches.length > 1) {
+    return matches[1]
+  }
+  return error
+}
+
 module.exports = {
   strip0x,
   summary,
   extractErrorMessage,
+  extractReason,
 }
