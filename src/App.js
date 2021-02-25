@@ -470,7 +470,7 @@ function App () {
               // clear the pending tx too
               console.warn('obsoleted transaction', pending)
               setSentTx(tx.hash, undefined)
-          }
+            }
             return false 
           }
           return tx.outputs.some(out => out.script.startsWith('6a'))
@@ -564,7 +564,7 @@ function App () {
     }
     setClaimableTx(claimableLogs)
   }
-  React.useEffect(fetchClamables, [wallet, contract])
+  React.useEffect(() => fetchClamables(), [wallet, contract])
 
   async function doClaim(log) {
     // check whether the tx is already submitted
@@ -792,7 +792,7 @@ function App () {
           </div>
           {tx.submitError && <div>&nbsp;❌&nbsp;{tx.submitError}</div>}
           {tx.lostTo && <div>&nbsp;❌&nbsp;<button style={{fontFamily: 'monospace'}} onClick={()=>exploreTx(tx.lostTo)}>{summary(tx.lostTo)}</button></div>}
-          {!!tx.minimumReward && <div><a target='_blank'
+          {!!tx.minimumReward && <div><a target='_blank' rel='noreferrer'
             href='https://en.bitcoin.it/wiki/Testnet#:~:text=if%20no%20block%20has%20been%20found%20in%2020%20minutes,%20the%20difficulty%20automatically%20resets%20back%20to%20the%20minimum%20for%20a%20single%20block'
             >minimum reward</a>
           </div>}
