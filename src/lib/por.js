@@ -4,15 +4,15 @@ const { merkle, Hash256 } = require('bcrypto')
 const { Transaction } = require('bitcoinjs-lib')
 const { keccak256 } = require('ethers').ethers.utils
 
-function isHit(txid, recipient) {
+const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
+
+export function isHit(txid, recipient) {
   // use (recipient+txid).reverse() for LE(txid)+LE(recipient)
   const hash = keccak256(Buffer.from(recipient+txid, 'hex').reverse())
   return BigInt(hash) % 32n === 0n
 }
 
-const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
-
-function prepareClaimParams(args, pubX, pubY) {
+export function prepareClaimParams(args, pubX, pubY) {
   const { blockHash, memoHash, payer, amount, timestamp } = args;
   const isPKH = args.pubkey.substring(2+40) == '000000000000000000000000'
   const params = {
@@ -27,7 +27,7 @@ function prepareClaimParams(args, pubX, pubY) {
   return params;
 }
 
-async function prepareSubmitTx(client, txParams, outpointParams, bountyParams) {
+export async function prepareSubmitTx(client, txParams, outpointParams, bountyParams) {
   const params = await _prepareSubmitParams(txParams)
   if (params.pubkeyPos) {
     var outpoint = []
@@ -272,10 +272,4 @@ if (!String.prototype.reverseHex) {
       return a.join('');                            // join the groups back together
     },
   });
-}
-
-module.exports = {
-  prepareClaimParams,
-  prepareSubmitTx,
-  isHit,
 }

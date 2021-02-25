@@ -197,4 +197,4 @@ function BlockchainClient(opts) {
   }
 }
 
-module.exports = BlockchainClient
+export default BlockchainClient

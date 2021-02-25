@@ -8,7 +8,7 @@ import { useLocalStorage } from '@rehooks/local-storage'
 import { ethers, utils } from 'ethers'
 import ci from 'coininfo'
 import { ECPair, payments, TransactionBuilder, address, script } from 'bitcoinjs-lib'
-import BcClient from './lib/BlockchainClient'
+import BlockchainClient from './lib/BlockchainClient'
 import { decShift } from './lib/big'
 import { strip0x, summary, extractReason } from './lib/utils'
 import { prepareClaimParams, prepareSubmitTx, isHit } from './lib/por'
@@ -180,7 +180,7 @@ function App () {
     if (!key) {
       return console.error('no API key provided')
     }
-    const client = BcClient({
+    const client = BlockchainClient({
       inBrowser: true,
       chain: 'bitcoin',
       key,
