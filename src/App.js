@@ -12,7 +12,7 @@ import BcClient from './lib/BlockchainClient'
 import { decShift } from './lib/big'
 import { strip0x, summary, extractErrorMessage } from './lib/utils'
 import { prepareClaimParams, prepareSubmitTx, isHit } from './lib/por'
-import { Alert, Prompt } from 'react-st-modal'
+import { Alert, Prompt, Confirm } from 'react-st-modal'
 const { keccak256, computeAddress } = ethers.utils
 
 const IMPLEMENTATIONS = ['Endurio', 'PoR', 'RefNetwork', 'BrandMarket']
@@ -545,6 +545,11 @@ function App () {
       return Alert('!wallet || !contract', 'Claim Error')
     }
 
+    const amount = decShift(log.desc.args.amount.toString(), -18)
+    if (!await Confirm(`Claim ${amount} on ${network} network?`, 'Claim Reward')) {
+      return
+    }
+
     setClaiming(log.transactionHash, true)
     try {
       const res = await contract.claim(log.params)
@@ -583,6 +588,10 @@ function App () {
     }
     if (!btx) {
       throw '!btx'
+    }
+
+    if (!await Confirm(`Send the bounty transaction using ${coinType}?`, 'Send Transaction')) {
+      return
     }
 
     setSentTx(undefined)
@@ -631,6 +640,11 @@ function App () {
     if (submitting.get(tx.hash)) throw 'tx is already sending'
     if (!client) throw '!client'
     if (!contract) throw '!contract'
+
+    if (!await Confirm(`Submit the transaction to ${network} network?`, 'Submit Transaction')) {
+      return
+    }
+
     setSubmitting(tx.hash, true)
     try {
       const {params, outpoint, bounty} = await prepareSubmitTx(client, {tx})
