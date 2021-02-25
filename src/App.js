@@ -56,8 +56,8 @@ function getSender(privateKey, coinType) {
   return payments.p2pkh({pubkey: keyPair.publicKey, network})
 }
 
-function useMap(defaultMap) {
-  const [value, setValue] = React.useState(new Map(Object.entries(defaultMap||{})))
+function useMap() {
+  const [value, setValue] = React.useState(new Map())
   return [value, (k, v) =>
     setValue(prev => {
       const map = new Map(prev)
@@ -129,10 +129,10 @@ function App () {
   const [tokenBalance, setTokenBalance] = React.useState()
   const [mapSentTx, setSentTx] = usePersistentMap('sent')                 // miningTx.hash => miningTx
   const [listConfirmedTx, setConfirmedTx] = React.useState()
-  const [isSubmitting, setSubmitting] = useMap({})
+  const [isSubmitting, setSubmitting] = useMap()
   const [mapSubmittedTx, setSubmittedTx] = usePersistentMap('submitted')  // miningTx.hash => submitTx.hash
   const [listClaimableTx, setClaimableTx] = React.useState()
-  const [isClaiming, setClaiming] = useMap({})
+  const [isClaiming, setClaiming] = useMap()
   const [mapClaimedTx, setClaimedTx] = usePersistentMap('claimed')        // submitTx.hash => claimTx.res
 
   // ethereum provider
