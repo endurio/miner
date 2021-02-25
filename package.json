@@ -1,6 +1,10 @@
 {
-  "name": "web-miner",
+  "name": "miner",
   "version": "0.1.0",
+  "author": {
+    "name": "Zergity",
+    "email": "zergity@endur.io"
+  },
   "private": true,
   "dependencies": {
     "@rehooks/local-storage": "^2.4.0",
