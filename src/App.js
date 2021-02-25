@@ -261,7 +261,7 @@ function App () {
     client.getUnspents(sender.address)
       .catch(console.error)
       .then((unspents) => {
-          setUTXOs(unspents)
+        setUTXOs(unspents)
         if (unspents.hasOwnProperty('balance')) {
           setSenderBalance(unspents.balance)
         }
@@ -281,7 +281,7 @@ function App () {
     setInput(undefined)
     setBtx(undefined)
     if (utxos.length) {
-    searchForBountyInput(utxos).then(setInput)
+      searchForBountyInput(utxos).then(setInput)
     }
 
     async function searchForBountyInput(utxos, maxBlocks = 6) {
@@ -458,7 +458,7 @@ function App () {
       .then(data => {
         const now = Math.floor(Date.now() / 1000)
         const txs = data.filter(tx => {
-          if (now-Number(tx.time) >= 60*60*999) {
+          if (now-Number(tx.time) >= 60*60) {
             return false  // too old
           }
           return tx.outputs.some(out => out.script.startsWith('6a'))
