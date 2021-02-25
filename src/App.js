@@ -200,6 +200,7 @@ function App () {
       setMiner(account)
     } catch(err) {
       console.error(err)
+      setMiner(undefined)
     }
   }, [privateKey])
   
@@ -610,11 +611,21 @@ function App () {
     const defaultValue = '***'
     Prompt(`Input your private key here (in hex format without 0x prefix). It stays only in your browser.`, {
       defaultValue: exists ? defaultValue : '',
-    }).then(value => {
-      if (value != null && value != defaultValue) {
-        setPrivateKey(value)
+    }).then(privateKey => {
+      if (privateKey != null && privateKey != defaultValue) {
+        if (!privateKey) {
+          setMiner(undefined)
+          setPrivateKey(undefined)
+          return
       }
-    }, console.error)
+        try {
+          computeAddress(Buffer.from(privateKey, 'hex'))
+          setPrivateKey(privateKey)
+        } catch(err) {
+          Alert(err.toString(), 'Private Key Input Error')
+        }
+      }
+    }, err => Alert(err.toString(), 'Private Key Input Error'))
   }
 
   async function doSend() {
