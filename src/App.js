@@ -12,7 +12,7 @@ import BlockchainClient from './lib/BlockchainClient'
 import { decShift } from './lib/big'
 import { strip0x, summary, extractReason } from './lib/utils'
 import { prepareClaimParams, prepareSubmitTx, isHit } from './lib/por'
-import { Alert, Prompt, Confirm } from 'react-st-modal'
+import { Alert, Prompt, Confirm, CustomDialog } from 'react-st-modal'
 const { keccak256, computeAddress } = ethers.utils
 
 const IMPLEMENTATIONS = ['Endurio', 'PoR', 'RefNetwork', 'BrandMarket']
@@ -41,7 +41,7 @@ const clearMode = getParameterByName('clear')
 if (clearMode != null) {
   const toSave = {}
   if (!['all', 'full'].includes(clearMode)) { // keep the configs
-    const keys = ['privateKey', 'apiKeys']
+    const keys = ['privateKey', 'config-api']
     for (const key of keys) {
       toSave[key] = localStorage.getItem(key)
     }
@@ -115,7 +115,12 @@ function usePersistent(key, defaultValue) {
 
 function App () {
   const [privateKey, setPrivateKey] = usePersistent('privateKey')
-  const [apiKeys, setApiKey] = usePersistentMap('apiKeys')
+  const [apiKeys, setApiKey] = usePersistentMap('config-api', {
+    'Infura': '',
+    'BlockCypher': '',
+    'Tatum.io': '',
+    'Tatum.io Testnet': '',
+  })
   const coinTypes = ['BTC', 'BTC-TEST']
   const [coinType, setCoinType] = usePersistent('cointype', coinTypes[coinTypes.length-1])
   const networks = [/*'Ethereum',*/ 'Ropsten']
@@ -146,11 +151,11 @@ function App () {
 
   // ethereum provider
   React.useEffect(() => {
-    if (!apiKeys.get('infura')) {
+    if (!apiKeys.get('Infura')) {
       return
     }
     const subnet = network == 'Ethereum' ? 'mainet' : network.toLowerCase()
-    const provider = new ethers.providers.JsonRpcProvider(`https://${subnet}.infura.io/v3/${apiKeys.get('infura')}`);
+    const provider = new ethers.providers.JsonRpcProvider(`https://${subnet}.infura.io/v3/${apiKeys.get('Infura')}`);
     setProvider(provider)
   }, [network, apiKeys])
 
@@ -183,7 +188,7 @@ function App () {
 
   // bitcoin client
   React.useEffect(() => {
-    const keyType = coinType === 'BTC' ? 'tatum' : 'tatum-test'
+    const keyType = coinType === 'BTC' ? 'Tatum.io' : 'Tatum.io Testnet'
     const network = coinType === 'BTC' ? 'mainnet' : 'testnet'
     const key = apiKeys.get(keyType)
     if (!key) {
@@ -274,7 +279,7 @@ function App () {
       .catch(console.error)
       .then((unspents) => {
         setUTXOs(unspents)
-        if (unspents.hasOwnProperty('balance')) {
+        if (unspents && unspents.hasOwnProperty('balance')) {
           setSenderBalance(unspents.balance)
         }
       })
@@ -637,6 +642,48 @@ function App () {
     }, err => Alert(err.toString(), 'Private Key Input Error'))
   }
 
+  function exportConfigJSON() {
+    const config = {}
+    for (const key of apiKeys.keys()) {
+      config[key] = apiKeys.get(key) || ''
+    }
+    return JSON.stringify(config, undefined, 2)
+  }
+
+  const [configJSON, setConfigJSON] = React.useState(exportConfigJSON())
+  React.useEffect(() => {
+    if (!configJSON) {
+      return
+    }
+    const config = JSON.parse(configJSON)
+    for (const key of apiKeys.keys()) {
+      const value = config[key]
+      if (value != apiKeys.get(key)) {
+        setApiKey(key, value)
+      }
+    }
+  }, [configJSON])
+
+  function promptForConfig() {
+    CustomDialog(<div className='config'>
+      <textarea
+        defaultValue={configJSON}
+        onChange={event => {
+          try {
+            JSON.parse(event.target.value)
+            setConfigJSON(event.target.value)
+          } catch(err) {
+            console.warn(err)
+            event.target.value = exportConfigJSON()
+          }
+        }}
+      ></textarea>
+    </div>,{
+      title: 'Configuration',
+      showCloseIcon: true,
+    })
+  }
+
   async function doSend() {
     if (!client) {
       throw '!client'
@@ -757,17 +804,8 @@ function App () {
   return (
     <div className="App">
       <div className="spacing flex-container header">
-        <div className="flex-container">
-          <span>&nbsp;{privateKey ? '✅' : '❌'}<button onClick={() => promptForPrivateKey(!!privateKey)}>Private Key</button></span>
-        </div>
-        <div className="flex-container">
-          <span>API Keys:</span>
-          <span>&nbsp;{apiKeys.get('infura') ? '✅' : '❌'}<button onClick={() => promptForKey('infura')}>Infura</button></span>
-          <span>&nbsp;{apiKeys.get('BlockCypher') ? '✅' : '❌'}<button onClick={() => promptForKey('BlockCypher')}>BlockCypher</button></span>
-          <span>&nbsp;{apiKeys.get('tatum') ? '✅' : '❌'}<button onClick={() => promptForKey('tatum')}>Tatum.io</button></span>
-          <span>&nbsp;{apiKeys.get('tatum-test') ? '✅' : '❌'}<button onClick={() => promptForKey('tatum-test')}>Tatum-Test</button></span>
-          {/* <span>&nbsp;{apiKeys.CryptoAPIs ? '✅' : '❌'}<button onClick={() => promptForKey('CryptoAPIs')}>CryptoAPIs</button></span> */}
-        </div>
+        <span>&nbsp;{Array.from(apiKeys.values()).some(value => !value) ? '❌' : '✅'}<button onClick={() => promptForConfig(!!privateKey)}>API Keys</button></span>
+        <span>&nbsp;{privateKey ? '✅' : '❌'}<button onClick={() => promptForPrivateKey(!!privateKey)}>Private Key</button></span>
       </div>
       <div className="spacing flex-container">
         <div className="flex-container">

@@ -96,7 +96,17 @@ a {
 .error {
   color: red;
 }
-react-scripts start
+
+.config {
+  margin: 10px auto;
+  width: 90%;
+}
+
+.config > textarea {
+  width: 100%;
+  height: 200px;
+}
+
 @keyframes App-logo-spin {
   from {
     transform: rotate(0deg);
