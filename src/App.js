@@ -37,9 +37,18 @@ function getParameterByName(name, url = window.location.href) {
   return decodeURIComponent(results[2].replace(/\+/g, ' '));
 }
 
-if (getParameterByName('clear') != null) {
+const clearMode = getParameterByName('clear')
+if (clearMode != null) {
+  const toSave = {}
+  if (!['all', 'full'].includes(clearMode)) { // keep the configs
+    const keys = ['privateKey', 'apiKeys']
+    for (const key of keys) {
+      toSave[key] = localStorage.getItem(key)
+    }
+  }
   localStorage.clear()
-  window.location.replace('/')
+  Object.entries(toSave).forEach(([key, value]) => localStorage.setItem(key, value))
+  window.location.replace(window.location.href.replace(/[?&]clear[^?&]*/, ''))
 }
 
 function getSender(privateKey, coinType) {
