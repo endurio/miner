@@ -118,7 +118,7 @@ function App () {
   const [client, setClient] = React.useState()
   const [input, setInput] = React.useState()
   const [btx, setBtx] = React.useState()
-  const [xmine, setXmine] = usePersistentMap('xmine', {'BTC': 1, 'BTC-TEST': 4})
+  const [xmine, setXmine] = usePersistentMap('xmine', {'BTC': 1, 'BTC-TEST': 1})
   const [chainHead, setChainHead] = React.useState()
   const [senderBalance, setSenderBalance] = React.useState()
   const [utxos, setUTXOs] = React.useState()
