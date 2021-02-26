@@ -53,6 +53,13 @@
   cursor: pointer;
 }
 
+input {
+  border: none;
+  border-left: solid 1px gray;
+  padding-left: 4px;
+  margin-right: -5px; /* negate the parent margin */
+}
+
 .header {
   margin-bottom: 20px;
 }
@@ -89,7 +96,7 @@ a {
 .error {
   color: red;
 }
-
+react-scripts start
 @keyframes App-logo-spin {
   from {
     transform: rotate(0deg);

@@ -838,7 +838,7 @@ function App () {
           />
         </div>
         <div className="flex-container">Max Bounty:&nbsp;
-          <input maxLength={1} style={{width: 10}}
+          <input maxLength={1} style={{width: 30}}
             value={maxBounty} onChange={event=>{
               const value = parseInt(event.target.value)
               if (value >= 0 && value <= 8) {
