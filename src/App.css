@@ -74,7 +74,7 @@ input {
 
 .indent > pre {
   max-width: calc(100vw - 2em);
-  overflow-x: hidden;
+  overflow-x: auto;
 }
 
 a {
