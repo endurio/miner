@@ -301,11 +301,12 @@ function App () {
       searchForBountyInput(utxos).then(setInput)
     }
 
-    async function searchForBountyInput(utxos, maxBlocks = 6) {
+    async function searchForBountyInput(utxos) {
+      const now = Math.floor(Date.now() / 1000)
       // utxos = [(utxos||[])[0]]  // only use the first UTXO for the blockcypher limit
       for (const utxo of utxos) {
         utxo.recipients = []
-        for (let i = 0; i < maxBlocks; ++i) {
+        for (let i = 0; i < 10; ++i) {
           const number = chainHead.blocks-i
           try {
             const block = await client.getBlock(number)
@@ -314,6 +315,9 @@ function App () {
             }
             if (block.bits === 0x1d00ffff) {
               continue    // skip testnet minimum difficulty blocks
+            }
+            if (now - block.time >= 60*60) {
+              break       // bounty: block too old
             }
             for (const tx of block.txs) {
               if (!isHit(utxo.tx_hash, tx.hash)) {
