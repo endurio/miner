@@ -122,6 +122,9 @@ a {
   --st-modal-transition: opacity 0.1s ease-out !important;
   --st-modal-transformVisible: translate(-50%, -50%) !important;
   --st-modal-transformHidden: translate(100%, 100%) !important;
+  --st-modal-minWidth: 300px;
+  --st-dialog-baseWidth: 600px;
+  --st-dialog-maxWidth: 95%;
 }
 
 /* drop down */
