@@ -799,7 +799,7 @@ function App () {
         if (adr !== sender.address) {
           btxDisplay += `${decShift(v, -8)} → ${adr}\n`
         } else {
-          btxDisplay += `${adr} ← ${decShift(v, -8)}`
+          btxDisplay += `${decShift(v, -8)} → (change)`
         }
       }
     }
