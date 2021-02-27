@@ -869,13 +869,14 @@ function App () {
       <div className="spacing flex-container">
         <div>Pending Transactions</div>
       </div>
-      {(mapSentTx && mapSentTx.size > 0) && <div className="spacing flex-container indent">
-        {Array.from(mapSentTx.values()).map(tx => ((!listConfirmedTx || !listConfirmedTx.some(t => t.hash == tx.hash)) &&
-            <div className="flex-container" key={tx.hash}>
-              <button style={{fontFamily: 'monospace'}} onClick={()=>exploreTx(tx.hash)}>{summary(tx.hash)}</button>
-            </div>
-        ))}
-      </div>}
+      {(mapSentTx && mapSentTx.size > 0) &&
+        Array.from(mapSentTx.values()).map(tx => ((!listConfirmedTx || !listConfirmedTx.some(t => t.hash == tx.hash)) &&
+          <div className="spacing flex-container indent" key={tx.hash}>
+            <div><button style={{fontFamily: 'monospace'}} onClick={()=>exploreTx(tx.hash)}>{summary(tx.hash)}</button></div>
+            {tx.received && <div>{new Date(tx.received).toLocaleTimeString('en-GB')}</div>}
+          </div>
+        ))
+      }
       <div className="spacing flex-container">
         <div className="flex-container">X-Mine:&nbsp;
           <input maxLength={3} style={{width: 30}}
