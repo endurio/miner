@@ -370,17 +370,18 @@ function App () {
       }
     })
 
-    search(1, txFee).then(setBtx)
+    const btx = search(1, txFee)
+    setBtx(btx)
 
     // binary search
-    async function search(start, end, last) {
-      if (start > end) return last || await build(end)
+    function search(start, end, last) {
+      if (start > end) return last || build(end)
       const mid = Math.floor((start + end)/2)
-      const tb = await build(mid)
+      const tb = build(mid)
       if (isValid(tb)) {
-        return await search(start, mid-1, tb)
+        return search(start, mid-1, tb)
       } else {
-        return await search(mid+1, end, last)
+        return search(mid+1, end, last)
       }
 
       function isValid(tb) {
@@ -403,7 +404,7 @@ function App () {
       }
     }
 
-    async function build(bountyAmount, outValue = 0) {
+    function build(bountyAmount, outValue = 0) {
       const tb = new TransactionBuilder(getNetwork(coinType))
 
       // add the memo output
@@ -417,7 +418,7 @@ function App () {
       let inValue = 0
       // build the mining outputs and required inputs
   
-      await buildWithoutChange()
+      buildWithoutChange()
 
       const changeValue = inValue - outValue - txFee
       if (changeValue <= 0) {
@@ -427,7 +428,7 @@ function App () {
 
       return tb
 
-      async function buildWithoutChange() {
+      function buildWithoutChange() {
         let recIdx = 0
         for (const input of inputs) {
           const index = input.hasOwnProperty('tx_output_n') ? input.tx_output_n : input.index
