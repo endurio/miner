@@ -72,6 +72,11 @@ input {
   margin-left: 2em;
 }
 
+.indent > pre {
+  max-width: calc(100vw - 2em);
+  overflow-x: hidden;
+}
+
 a {
   text-decoration: none;
 }
