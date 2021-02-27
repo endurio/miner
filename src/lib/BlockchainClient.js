@@ -35,16 +35,6 @@ function BlockchainClient(opts) {
     return _getBaseUrl() + path
   }
 
-  function _hashCode(str) {
-    let hash = 0;
-    for (let i = 0; i < str.length; i++) {
-      const char = str.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
-      hash = hash & hash; // Convert to 32bit integer
-    }
-    return hash >>> 0;  // convert int32 to uint32
-  }
-
   return {
     get(path, callback, version) {
       const options = {
