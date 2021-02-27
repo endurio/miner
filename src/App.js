@@ -845,7 +845,7 @@ function App () {
         </div>
       ))}
       <div className="spacing flex-container">
-        <div>Submittable Transactions</div>
+        <div>Confirmed Transactions</div>
         <div>{listConfirmedTx ? <button onClick={()=>fetchRecent(true)}>Reload</button> : <div className="lds-dual-ring"></div>}</div>
       </div>
       {listConfirmedTx && listConfirmedTx.map(tx => (!mapSubmittedTx.get(tx.hash) &&
@@ -854,8 +854,8 @@ function App () {
             <button style={{fontFamily: 'monospace'}} onClick={()=>exploreTx(tx.hash)}>{summary(tx.hash)}</button>
           </div>
           {tx.submitError && <div>&nbsp;❌&nbsp;{tx.submitError}</div>}
-          {tx.lostTo && <div>&nbsp;❌&nbsp;<button style={{fontFamily: 'monospace'}} onClick={()=>exploreTx(tx.lostTo)}>{summary(tx.lostTo)}</button></div>}
-          {!!tx.minimumReward && <div><a target='_blank' rel='noreferrer'
+          {(!tx.submitError && tx.lostTo) && <div>&nbsp;❌&nbsp;<button style={{fontFamily: 'monospace'}} onClick={()=>exploreTx(tx.lostTo)}>{summary(tx.lostTo)}</button></div>}
+          {(!tx.submitError && !!tx.minimumReward) && <div><a target='_blank' rel='noreferrer'
             href='https://en.bitcoin.it/wiki/Testnet#:~:text=if%20no%20block%20has%20been%20found%20in%2020%20minutes,%20the%20difficulty%20automatically%20resets%20back%20to%20the%20minimum%20for%20a%20single%20block'
             >minimum reward</a>
           </div>}
