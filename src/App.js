@@ -148,6 +148,9 @@ function App () {
   const [listClaimableTx, setClaimableTx] = React.useState()
   const [isClaiming, setClaiming] = useMap()
   const [mapClaimedTx, setClaimedTx] = usePersistentMap('claimed')        // submitTx.hash => claimTx.res
+  const [miningInterval, setMiningInterval] = usePersistent('miningInterval', 10)
+  const [minAutoBounty, setMinAutoBounty] = usePersistent('minAutoBounty', 3)
+  const [autoMining, setAutoMining] = React.useState()
 
   // ethereum provider
   React.useEffect(() => {
@@ -354,6 +357,7 @@ function App () {
     }
   }, [utxos, maxBounty])
 
+  // build btx on new input
   React.useEffect(() => {
     if (!input || !input.recipients || !utxos) {
       return
@@ -707,7 +711,7 @@ function App () {
     })
   }
 
-  async function doSend() {
+  async function doSend(automatic) {
     if (!client) {
       throw '!client'
     }
@@ -715,7 +719,7 @@ function App () {
       throw '!btx'
     }
 
-    if (!await Confirm(`Send the bounty transaction using ${coinType}?`, 'Send Transaction')) {
+    if (!automatic && !await Confirm(`Send the bounty transaction using ${coinType}?`, 'Send Transaction')) {
       return
     }
 
@@ -827,6 +831,45 @@ function App () {
     return btxDisplay
   }
 
+  // auto mining on btx rebuilt
+  React.useEffect(() => {
+    if (!btx || !autoMining) {
+      return
+    }
+    const tx = btx.buildIncomplete()
+    if (tx.outs.length < 2+minAutoBounty) {
+      // only send when there's at least a number of bounty outputs
+      console.warn('auto mining: too few bounty outputs', tx)
+      if (autoMining >= 5) {
+        // try again after half an interval, if the interval > 5 min
+        setTimeout(fetchUnspent, autoMining*30*1000) 
+      }
+      return
+    }
+    if (mapSentTx && mapSentTx.size) {
+      const recentlySent = Array.from(mapSentTx.values()).some(tx => {
+        const elapsed = (Date.now() - new Date(tx.received).getTime()) / 1000 / 60
+        return elapsed < miningInterval
+      })
+      if (recentlySent) {
+        console.warn('auto mining: recently sent')
+        return
+      }
+    }
+    doSend(true)
+  }, [btx])
+
+  function toggleMining() {
+    if (!!autoMining) {
+      clearInterval(autoMining)
+      setAutoMining(undefined)
+      return
+    }
+    const interval = setInterval(fetchUnspent, miningInterval*60*1000)
+    setAutoMining(interval)
+    fetchUnspent()  // trigger the first fetchUnspent
+  }
+
   return (
     <div className="App">
       <div className="spacing flex-container header">
@@ -898,6 +941,36 @@ function App () {
           </div>
         ))
       }
+      <div className='spacing flex-container'>
+        <div className="flex-container">Auto Mining Interval:&nbsp;
+          <input style={{width: 40}}
+            value={miningInterval} onInput={event=>{
+              const value = parseInt(event.target.value)
+              if (value > 0) {
+                setMiningInterval(value)
+              }
+            }}
+          />
+          <span style={{marginLeft: '1ex'}}>minutes</span>
+        </div>
+        <div className="flex-container">Min Bounty:&nbsp;
+          <input maxLength={1} style={{width: 30}}
+            value={minAutoBounty} onChange={event=>{
+              const value = parseInt(event.target.value)
+              if (value > 0 && value <= 8) {
+                setMinAutoBounty(value)
+              }
+            }}
+          />
+        </div>
+        {miningInterval < 10 ?
+          <div>&nbsp;❌ interval too short</div> :
+          <div>{!!autoMining ?
+            <button onClick={()=>toggleMining()}>⛔ Stop</button> :
+            <button onClick={()=>toggleMining()}>▶️ Start</button>
+          }</div>
+        }
+      </div>
       <div className="spacing flex-container">
         <div className="flex-container">X-Mine:&nbsp;
           <input maxLength={3} style={{width: 30}}
