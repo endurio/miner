@@ -1,6 +1,8 @@
 //config variables for the module. (only network for now)
 //"testnet" for testnet and anything else for mainnet
 
+const { decShift } = require('./big')
+
 function BlockchainClient(opts) {
   if (!(this instanceof BlockchainClient)) return new BlockchainClient(opts);
 
@@ -123,8 +125,8 @@ function BlockchainClient(opts) {
       return new Promise((resolve, reject) => {
         this.get(`/address/balance/${address}`, (err, data) => {
           if (err) return reject(err)
-          const balance = data.incoming - data.outgoing
-          return resolve(balance)
+          const balance = decShift(data.incoming, 8) - decShift(data.outgoing, 8)
+          return resolve(decShift(balance, -8))
         })
       })
     },
