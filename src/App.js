@@ -644,16 +644,6 @@ function App () {
     }
   }
 
-  function promptForKey(key) {
-    Prompt(`API key for ${key}:`, {
-      defaultValue: apiKeys.get(key),
-    }).then(value => {
-      if (value != null) {
-        setApiKey(key, value)
-      }
-    }, console.error)
-  }
-
   function promptForPrivateKey(exists) {
     const defaultValue = '***'
     Prompt(`Input your private key here (in hex format without 0x prefix). It stays only in your browser.`, {
