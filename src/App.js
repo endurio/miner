@@ -472,6 +472,34 @@ function App () {
     }
   }, [input, fee, xmine])
 
+  // auto submit tx
+  React.useEffect(() => {
+    if (!listConfirmedTx || !listConfirmedTx.length) {
+      return
+    }
+    listConfirmedTx.forEach(tx => {
+      const pending = mapSentTx.get(tx.hash)
+      if (!pending) {
+        return  // ignore tx sent by other client
+      }
+      if (tx.lostTo) {
+        setSentTx(tx.hash, undefined)
+        return  // ignore losing tx
+      }
+      if (tx.minimumReward) {
+        setSentTx(tx.hash, undefined)
+        return  // ignore tx with minimum reward
+      }
+      console.log('transaction confirmed', tx)
+      doSubmit(tx, true).then(res => {
+        if (res) {
+        console.log('auto submitted', tx)
+        setSentTx(tx.hash, undefined)
+        }
+      })
+    })
+  }, [listConfirmedTx])
+
   function fetchRecent(manual) {
     if (!client || !contract) {
       return
@@ -723,6 +751,8 @@ function App () {
         console.log('tx successfully sent', tx)
         setSentTx(tx.hash, tx)
         fetchUnspent(true)
+        // fetchRecent and auto-submit after 50 mins
+        setTimeout(fetchRecent, 1000*60*50);
       })
       .catch(err => {
         fetchUnspent(true)
@@ -741,12 +771,12 @@ function App () {
     window.open(url, '_blank')
   }
 
-  async function doSubmit(tx) {
+  async function doSubmit(tx, automatic) {
     if (isSubmitting.get(tx.hash)) throw 'tx is already sending'
     if (!client) throw '!client'
     if (!contract) throw '!contract'
 
-    if (!await Confirm(`Submit the transaction to ${network} network?`, 'Submit Transaction')) {
+    if (!automatic && !await Confirm(`Submit the transaction to ${network} network?`, 'Submit Transaction')) {
       return
     }
 
@@ -769,11 +799,12 @@ function App () {
         if (found) {
           setSentTx(found.hash, undefined)
         }
+        return res
       }
     } catch (err) {
       Alert(err, 'Transaction Submitting Error')
     } finally {
-      setSubmitting(tx.hash)
+      setSubmitting(tx.hash, undefined)
     }
   }
 
