@@ -85,6 +85,10 @@ a {
   text-decoration: underline;
 }
 
+.flex-container button:focus {
+  outline: none;
+}
+
 .Dropdown-root {
   cursor: pointer;
 }
