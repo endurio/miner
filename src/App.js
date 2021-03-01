@@ -478,30 +478,36 @@ function App () {
 
   // auto submit tx
   React.useEffect(() => {
-    if (!listConfirmedTx || !listConfirmedTx.length) {
-      return
-    }
-    listConfirmedTx.forEach(tx => {
-      const pending = mapSentTx.get(tx.hash)
-      if (!pending) {
-        return  // ignore tx sent by other client
+    autoSubmitAll()
+    async function autoSubmitAll() {
+      if (!listConfirmedTx) {
+        return
       }
-      if (tx.lostTo) {
-        setSentTx(tx.hash, undefined)
-        return  // ignore losing tx
-      }
-      if (tx.minimumReward) {
-        setSentTx(tx.hash, undefined)
-        return  // ignore tx with minimum reward
-      }
-      console.log('transaction confirmed', tx)
-      doSubmit(tx, true).then(res => {
-        if (res) {
-        console.log('auto submitted', tx)
-        setSentTx(tx.hash, undefined)
+      for (const tx of listConfirmedTx) {
+        const pending = mapSentTx.get(tx.hash)
+        if (!pending) {
+          continue  // ignore tx sent by other client
         }
-      })
-    })
+        if (tx.lostTo) {
+          setSentTx(tx.hash, undefined)
+          continue  // ignore losing tx
+        }
+        if (tx.minimumReward) {
+          setSentTx(tx.hash, undefined)
+          continue  // ignore tx with minimum reward
+        }
+        console.log('transaction confirmed', tx)
+        try {
+          const res = await doSubmit(tx, false)
+          if (res) {
+            console.log('auto submitted', tx)
+            setSentTx(tx.hash, undefined)
+          }
+        } catch(err) {
+          console.warn('auto submit failed', err, tx)
+        }
+      }
+    }
   }, [listConfirmedTx])
 
   function fetchRecent(manual) {
@@ -613,8 +619,8 @@ function App () {
     submitLogs = (await submitLogs)
       .filter(({topics}) => !claimed[topics[0]])
       .map(log => {
-      const desc = contract.interface.parseLog(log)
-      const params = prepareClaimParams(desc.args, pubX, pubY)
+        const desc = contract.interface.parseLog(log)
+        const params = prepareClaimParams(desc.args, pubX, pubY)
         return {...log, desc, params}
       })
     const claimableLogs = []
@@ -722,7 +728,7 @@ function App () {
     })
   }
 
-  async function doSend(automatic) {
+  async function doSend(interactive=true) {
     if (!client) {
       throw '!client'
     }
@@ -730,7 +736,7 @@ function App () {
       throw '!btx'
     }
 
-    if (!automatic && !await Confirm(`Send the bounty transaction using ${coinType}?`, 'Send Transaction')) {
+    if (interactive && !await Confirm(`Send the bounty transaction using ${coinType}?`, 'Send Transaction')) {
       return
     }
 
@@ -776,12 +782,12 @@ function App () {
     window.open(url, '_blank')
   }
 
-  async function doSubmit(tx, automatic) {
+  async function doSubmit(tx, interactive=true) {
     if (isSubmitting.get(tx.hash)) throw 'tx is already sending'
     if (!client) throw '!client'
     if (!contract) throw '!contract'
 
-    if (!automatic && !await Confirm(`Submit the transaction to ${network} network?`, 'Submit Transaction')) {
+    if (interactive && !await Confirm(`Submit the transaction to ${network} network?`, 'Submit Transaction')) {
       return
     }
 
@@ -790,13 +796,25 @@ function App () {
       const {params, outpoint, bounty} = await prepareSubmitTx(client, {tx})
       // emulate call
       let res = await contract.callStatic.submit(params, outpoint, bounty)
-        .catch(res => Alert(extractReason(res), 'Transaction Verification Error'))
+        .catch(res => {
+          if (interactive) {
+            Alert(extractReason(res), 'Transaction Verification Error')
+          } else {
+            throw res
+          }
+        } )
       if (!res) {
         return
       }
       // actuall transaction
       res = await contract.submit(params, outpoint, bounty)
-        .catch(res => Alert(extractReason(res), 'Transaction Submitting Error'))
+        .catch(res => {
+          if (interactive) {
+            Alert(extractReason(res), 'Transaction Submitting Error')
+          } else {
+            throw res
+          }
+        })
       if (res) {
         console.log('success', res)
         setSubmittedTx(tx.hash, res.hash)
@@ -807,7 +825,11 @@ function App () {
         return res
       }
     } catch (err) {
-      Alert(err, 'Transaction Submitting Error')
+      if (interactive) {
+        Alert(err, 'Transaction Submitting Error')
+      } else {
+        throw err
+      }
     } finally {
       setSubmitting(tx.hash, undefined)
     }
@@ -853,21 +875,21 @@ function App () {
       console.warn('auto mining: too few bounty outputs', tx)
       if (autoMining >= 5) {
         // try again after half an interval, if the interval > 5 min
-        setTimeout(fetchUnspent, autoMining*30*1000) 
+        setTimeout(fetchUnspent, autoMining*30*1000)
       }
       return
     }
     if (mapSentTx && mapSentTx.size) {
       const recentlySent = Array.from(mapSentTx.values()).some(tx => {
         const elapsed = (Date.now() - new Date(tx.received).getTime()) / 1000 / 60
-        return elapsed < miningInterval
+        return elapsed * 4 < miningInterval * 3
       })
       if (recentlySent) {
         console.warn('auto mining: recently sent')
         return
       }
     }
-    doSend(true)
+    doSend(false)
   }, [btx])
 
   function toggleMining() {
