@@ -13,11 +13,11 @@ export function isHit(txid, recipient) {
 }
 
 export function prepareClaimParams(args, pubX, pubY) {
-  const { blockHash, memoHash, payer, amount, timestamp } = args;
+  const { blockHash, memoHash, payer, value, timestamp } = args;
   const isPKH = args.pubkey.substring(2+40) == '000000000000000000000000'
   const params = {
     blockHash, memoHash, payer,
-    amount: amount.toString(),
+    amount: value.toString(),
     timestamp: timestamp.toString(),
     isPKH,
     pubX,

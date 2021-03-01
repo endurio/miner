@@ -582,7 +582,7 @@ function App () {
   }
   React.useEffect(fetchRecent, [chainHead, client, contract])
 
-  async function fetchClamables(manual) {
+  async function fetchClaimables(manual) {
     // check whether the tx is already submitted
     if (!wallet || !contract) {
       return
@@ -597,26 +597,38 @@ function App () {
     // wallet exists ensure that both privateKey and provider exists
     const pubX = '0x' + strip0x(wallet.publicKey).substr(2, 64)
     const pubY = '0x' + strip0x(wallet.publicKey).substr(64+2)
-    const filter = contract.filters.Submit(null, null, null, pubX)
-    filter.fromBlock = latest - 60000
-    const logs = await wallet.provider.getLogs(filter)
-    const claimableLogs = []
-    for (const log of logs) {
-      if (!!mapClaimedTx.get(log.transactionHash)) {
-        continue  // already claimed
-      }
+    const fromBlock = latest - 60000
+
+    let submitLogs = wallet.provider.getLogs({
+      ...contract.filters.Submit(null, null, pubX),
+      fromBlock,
+    })
+    const claimLogs = await wallet.provider.getLogs({
+      ...contract.filters.Claim(null, null, wallet.address),
+      fromBlock,
+    })
+    const claimed = {}
+    claimLogs.forEach(({topics}) => claimed[topics[0]] = true)
+
+    submitLogs = (await submitLogs)
+      .filter(({topics}) => !claimed[topics[0]])
+      .map(log => {
       const desc = contract.interface.parseLog(log)
       const params = prepareClaimParams(desc.args, pubX, pubY)
+        return {...log, desc, params}
+      })
+    const claimableLogs = []
+    for (const log of submitLogs) {
       try {
-        await contract.callStatic.claim(params)
-        claimableLogs.push({...log, desc, params})
+        await contract.callStatic.claim(log.params)
+        claimableLogs.push(log)
       } catch (err) {
-        console.log('unclaimable', err)
+        console.log('unclaimable:', extractReason(err), log)
       }
     }
     setClaimableTx(claimableLogs)
   }
-  React.useEffect(() => fetchClamables(), [wallet, contract])
+  React.useEffect(() => fetchClaimables(), [wallet, contract])
 
   async function doClaim(log) {
     // check whether the tx is already submitted
@@ -624,7 +636,7 @@ function App () {
       return Alert('!wallet || !contract', 'Claim Error')
     }
 
-    const amount = decShift(log.desc.args.amount.toString(), -18)
+    const amount = decShift(log.desc.args.value.toString(), -18)
     if (!await Confirm(`Claim ${amount} END on ${network} network?`, 'Claim Reward')) {
       return
     }
@@ -633,7 +645,6 @@ function App () {
     try {
       await contract.callStatic.claim(log.params)
       const res = await contract.claim(log.params)
-      console.error(res)
       setClaimedTx(log.transactionHash, res)
       // remove the tx from the submitted map
       const found = Array.from(mapSubmittedTx.entries()).find(([,value]) => value == log.transactionHash)
@@ -894,14 +905,14 @@ function App () {
       {!isLoading && <div className="spacing flex-container indent"><span>{decShift(senderBalance, -8)} {coinType}</span></div>}
       <div className="spacing flex-container">
         <div>Claimable Reward</div>
-        <div>{listClaimableTx ? <button onClick={()=>fetchClamables(true)}>Reload</button> : <div className="lds-dual-ring"></div>}</div>
+        <div>{listClaimableTx ? <button onClick={()=>fetchClaimables(true)}>Reload</button> : <div className="lds-dual-ring"></div>}</div>
       </div>
       {listClaimableTx && listClaimableTx.map(log => ((!mapClaimedTx || !mapClaimedTx.get(log.transactionHash)) &&
         <div className="spacing flex-container indent" key={log.blockHash}>
           <div className="flex-container">
             <button style={{fontFamily: 'monospace'}} onClick={()=>exploreTxEth(log.transactionHash)}>{summary(strip0x(log.transactionHash))}</button>
           </div>
-          <div>{decShift(log.desc.args.amount.toString(), -18)} <a target='blank' href={`https://${network.toLowerCase()}.etherscan.io/token/${CONTRACT_ADDRESS[network]}?a=${miner}`}>END</a></div>
+          <div>{decShift(log.desc.args.value.toString(), -18)} <a target='blank' href={`https://${network.toLowerCase()}.etherscan.io/token/${CONTRACT_ADDRESS[network]}?a=${miner}`}>END</a></div>
           <div>{isClaiming.get(log.transactionHash) ?
             <div className="lds-dual-ring"></div> :
             <button onClick={()=>doClaim(log)}>Claim</button>
