@@ -765,8 +765,8 @@ function App () {
       const tx = await client.sendTx(txHex)
         console.log('tx successfully sent', tx)
         setSentTx(tx.hash, tx)
-        // fetchRecent and auto-submit after 50 mins
-        setTimeout(fetchRecent, 1000*60*50);
+        // fetchRecent and auto-submit after 40 mins
+        setTimeout(fetchRecent, 1000*60*40);
     } catch (err) {
       if (interactive) {
         Alert(err, 'Transaction Sending Error')
