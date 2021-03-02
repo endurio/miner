@@ -127,13 +127,15 @@ export async function prepareSubmitTx(client, txParams, outpointParams, bountyPa
     let recipientTx
     for (let offset = 0; !recipientTx; offset+= 50) {
       const recipientTxs = await client.getTxs(recipient, 50, offset)
-      // TODO: properly find the correct bounty referenced tx instead of blindly pick the last one with no OP_RET
       if (!recipientTxs || recipientTxs.length == 0) {
         break // no more history to scan
       }
       recipientTx = recipientTxs.find(t => {
         const hasOpRet = t.outputs.some(o => o.script.startsWith('6a'))
-        return !hasOpRet && isHit(tx.inputs[0].prevout.hash, t.hash)
+        if (hasOpRet) return false
+        const outScriptMatched = t.outputs[t.outputs.length-1].script == samplingOutput.script
+        if (!outScriptMatched) return false
+        return isHit(tx.inputs[0].prevout.hash, t.hash)
       })
     }
     if (!recipientTx) {
