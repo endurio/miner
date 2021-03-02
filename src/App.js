@@ -753,24 +753,27 @@ function App () {
       setBtx(btx)
     }
 
-    tx = btx.build()
-    setBtx(undefined)   // clear the about-to-send tx
-
-    const txHex = tx.toHex()
+    const txHex = btx.build().toHex()
     console.log('sending signed tx', txHex)
 
-    client.sendTx(txHex)
-      .then(tx => {
+    // clear the last built tx
+    setBtx(undefined)   // clear the about-to-send tx
+    setUTXOs(undefined)
+    setInput(undefined)
+
+    try {
+      const tx = await client.sendTx(txHex)
         console.log('tx successfully sent', tx)
         setSentTx(tx.hash, tx)
-        fetchUnspent(true)
         // fetchRecent and auto-submit after 50 mins
         setTimeout(fetchRecent, 1000*60*50);
-      })
-      .catch(err => {
-        fetchUnspent(true)
+    } catch (err) {
+      if (interactive) {
         Alert(err, 'Transaction Sending Error')
-      })
+      } else {
+        console.error('Transaction Sending Error', err)
+      }
+    }
   }
 
   function exploreTx(hash) {
@@ -1040,10 +1043,10 @@ function App () {
           />
         </div>
         <div>{isLoading ? <div className="lds-dual-ring"></div> : <button onClick={()=>fetchData(true)}>Rebuild</button>}</div>
-        <div>
+        {(utxos && utxos.length) && <div>
           {(!btxError&&!btxDisplay) && <div className="lds-dual-ring"></div>}
           {((client || apiKeys.get('BlockCypher')) && !!btxDisplay) && <button onClick={() => doSend()}>Send</button>}
-        </div>
+        </div>}
       </div>
       <div className='spacing flex-container indent'>
         {btxError && <span className="error">{btxError}</span>}
