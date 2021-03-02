@@ -613,11 +613,13 @@ function App () {
       ...contract.filters.Claim(null, null, wallet.address),
       fromBlock,
     })
+
+    // topics[1] is the blockHash
     const claimed = {}
-    claimLogs.forEach(({topics}) => claimed[topics[0]] = true)
+    claimLogs.forEach(({topics}) => claimed[topics[1]] = true)
 
     submitLogs = (await submitLogs)
-      .filter(({topics}) => !claimed[topics[0]])
+      .filter(({topics}) => !claimed[topics[1]])
       .map(log => {
         const desc = contract.interface.parseLog(log)
         const params = prepareClaimParams(desc.args, pubX, pubY)
