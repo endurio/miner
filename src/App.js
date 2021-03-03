@@ -440,7 +440,8 @@ function App () {
         let recIdx = 0
         for (const input of inputs) {
           const index = input.hasOwnProperty('tx_output_n') ? input.tx_output_n : input.index
-          tb.addInput(input.tx_hash, index)
+          // nSequence is disabled, nLocktime is enabled
+          tb.addInput(input.tx_hash, index, 0xFFFFFFFE)
           inValue += parseInt(input.value)
 
           while (recIdx < recipients.length) {
@@ -742,6 +743,10 @@ function App () {
       return
     }
 
+    // set lock time to prevent compete with ourselve
+    const locktime = getNextLocktime()
+    btx.setLockTime(locktime)
+
     let tx = btx.buildIncomplete()
     const signed = !tx.ins.some(({script}) => !script || !script.length)
     if (!signed) {
@@ -773,6 +778,16 @@ function App () {
       } else {
         console.error('Transaction Sending Error', err)
       }
+    }
+
+    function getNextLocktime() {
+      let max = chainHead.blocks || 0
+      Array.from(mapSentTx.values()).forEach(tx => {
+        if (tx.lock_time && tx.lock_time+1 > max) {
+          max = tx.lock_time+1
+        }
+      })
+      return max
     }
   }
 
