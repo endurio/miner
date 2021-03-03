@@ -769,9 +769,9 @@ function App () {
         setTimeout(fetchRecent, 1000*60*40);
     } catch (err) {
       if (interactive) {
-        Alert(err, 'Transaction Sending Error')
+        Alert(err.toString(), 'Transaction Sending Error')
       } else {
-        console.error('Transaction Sending Error', err)
+        throw err
       }
     }
   }
@@ -831,7 +831,7 @@ function App () {
       }
     } catch (err) {
       if (interactive) {
-        Alert(err, 'Transaction Submitting Error')
+        Alert(err.toString(), 'Transaction Submitting Error')
       } else {
         throw err
       }
