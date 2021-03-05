@@ -13,6 +13,7 @@ import { decShift } from './lib/big'
 import { strip0x, summary, extractReason } from './lib/utils'
 import { prepareClaimParams, prepareSubmitTx, isHit } from './lib/por'
 import { Alert, Prompt, Confirm, CustomDialog } from 'react-st-modal'
+import { isMobile } from 'react-device-detect'
 const { keccak256, computeAddress } = ethers.utils
 
 const IMPLEMENTATIONS = ['Endurio', 'PoR', 'RefNetwork', 'BrandMarket']
@@ -130,10 +131,14 @@ function App () {
   const [maxBounty, setMaxBounty] = usePersistent('maxBounty', 8)
   const [fee, setFee] = usePersistentMap('fee', {'BTC': 1306, 'BTC-TEST': 999})
   const [client, setClient] = React.useState()
+  const clientRef = React.useRef(client)
+  clientRef.current = client
   const [input, setInput] = React.useState()
   const [btx, setBtx] = React.useState()
   const [xmine, setXmine] = usePersistentMap('xmine', {'BTC': 1, 'BTC-TEST': 1})
   const [chainHead, setChainHead] = React.useState()
+  const chainHeadRef = React.useRef(chainHead)
+  chainHeadRef.current = chainHead
   const [senderBalance, setSenderBalance] = React.useState()
   const [utxos, setUTXOs] = React.useState()
   const [provider, setProvider] = React.useState()
@@ -148,9 +153,8 @@ function App () {
   const [listClaimableTx, setClaimableTx] = React.useState()
   const [isClaiming, setClaiming] = useMap()
   const [mapClaimedTx, setClaimedTx] = usePersistentMap('claimed')        // submitTx.hash => claimTx.res
-  const [miningInterval, setMiningInterval] = usePersistent('miningInterval', 10)
   const [minAutoBounty, setMinAutoBounty] = usePersistent('minAutoBounty', 3)
-  const [autoMining, setAutoMining] = React.useState()
+  const [autoMining, setAutoMining] = React.useState(false)
 
   // ethereum provider
   React.useEffect(() => {
@@ -244,6 +248,46 @@ function App () {
         })
     }
   }, [provider, miner])
+
+  function pollChainhead() {
+    const client = clientRef.current
+    if (!client) {
+      console.warn('!client: schedule for the next second')
+      setTimeout(pollChainhead, 1000)
+      return
+    }
+    client.getInfo()
+      .then(data => {
+        let nextPoll = 10; // default after 10s
+        const chainHead = chainHeadRef.current
+        if (!chainHead || chainHead.bestblockhash !== data.bestblockhash) {
+          if (chainHead && !isMobile) {  // not the first poll
+            nextPoll = 9*60
+          }
+          setChainHead(data)
+        }
+        console.log(`schedule for the next ${nextPoll}s`)
+        setTimeout(pollChainhead, nextPoll*1000)
+      })
+      .catch(err => {
+        console.error(err)
+        setChainHead(undefined)
+        console.log(`schedule for the next minute`)
+        setTimeout(pollChainhead, 60*1000) // retry after 1 min
+      })
+  }
+  React.useEffect(pollChainhead, [])  // call it only once
+
+  React.useEffect(() => {
+    if (!chainHead) {
+      return
+    }
+    console.error('new block', chainHead)
+    if (autoMining) {
+      fetchUnspent()  // to trigger auto mine
+      fetchRecent()   // to trigger auto submit
+    }
+  }, [chainHead])
 
   function fetchData(unspent) {
     if (!client) {
@@ -764,6 +808,9 @@ function App () {
     try {
       const tx = await client.sendTx(txHex)
         console.log('tx successfully sent', tx)
+        if (chainHead) {
+          tx.targetBlock = chainHead.blocks
+        }
         setSentTx(tx.hash, tx)
         // fetchRecent and auto-submit after 40 mins
         setTimeout(fetchRecent, 1000*60*40);
@@ -878,33 +925,28 @@ function App () {
     if (tx.outs.length < 2+minAutoBounty) {
       // only send when there's at least a number of bounty outputs
       console.warn('auto mining: too few bounty outputs', tx)
-      if (autoMining >= 5) {
-        // try again after half an interval, if the interval > 5 min
-        setTimeout(fetchUnspent, autoMining*30*1000)
-      }
+      // try again after half an interval, if the interval > 5 min
+      setTimeout(fetchUnspent, 5*60*1000)
       return
     }
-    if (mapSentTx && mapSentTx.size) {
-      const recentlySent = Array.from(mapSentTx.values()).some(tx => {
-        const elapsed = (Date.now() - new Date(tx.received).getTime()) / 1000 / 60
-        return elapsed * 4 < miningInterval * 3
-      })
-      if (recentlySent) {
-        console.warn('auto mining: recently sent')
+    if (mapSentTx && mapSentTx.size && chainHead) {
+      const alreadySent = Array.from(mapSentTx.values()).some(tx => tx.targetBlock == chainHead.blocks)
+      if (alreadySent) {
+        console.warn('auto mining: already mine this block')
         return
       }
     }
     doSend(false)
-  }, [btx])
+  }, [btx, autoMining, minAutoBounty])
 
   function toggleMining() {
     if (!!autoMining) {
-      clearInterval(autoMining)
-      setAutoMining(undefined)
+      console.log('stop mining')
+      setAutoMining(false)
       return
     }
-    const interval = setInterval(fetchUnspent, miningInterval*60*1000)
-    setAutoMining(interval)
+    console.log('start mining')
+    setAutoMining(true)
     fetchUnspent()  // trigger the first fetchUnspent
   }
 
@@ -980,17 +1022,6 @@ function App () {
         ))
       }
       <div className='spacing flex-container'>
-        <div className="flex-container">Auto Mining Interval:&nbsp;
-          <input style={{width: 40}}
-            value={miningInterval} onInput={event=>{
-              const value = parseInt(event.target.value)
-              if (value > 0) {
-                setMiningInterval(value)
-              }
-            }}
-          />
-          <span style={{marginLeft: '1ex'}}>minutes</span>
-        </div>
         <div className="flex-container">Min Bounty:&nbsp;
           <input maxLength={1} style={{width: 30}}
             value={minAutoBounty} onChange={event=>{
@@ -1001,13 +1032,10 @@ function App () {
             }}
           />
         </div>
-        {miningInterval < 10 ?
-          <div>&nbsp;❌ interval too short</div> :
-          <div>{!!autoMining ?
-            <button onClick={()=>toggleMining()}>⛔ Stop</button> :
-            <button onClick={()=>toggleMining()}>▶️ Start</button>
-          }</div>
-        }
+        {<div>{!!autoMining ?
+          <button onClick={()=>toggleMining()}>⛔ Stop</button> :
+          <button onClick={()=>toggleMining()}>▶️ Start</button>
+        }</div>}
       </div>
       <div className="spacing flex-container">
         <div className="flex-container">X-Mine:&nbsp;
