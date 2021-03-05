@@ -935,7 +935,7 @@ function App () {
         <div>{listClaimableTx ? <button onClick={()=>fetchClaimables(true)}>Reload</button> : <div className="lds-dual-ring"></div>}</div>
       </div>
       {listClaimableTx && listClaimableTx.map(log => ((!mapClaimedTx || !mapClaimedTx.get(log.transactionHash)) &&
-        <div className="spacing flex-container indent" key={log.blockHash}>
+        <div className="spacing flex-container indent" key={log.transactionHash}>
           <div className="flex-container">
             <button style={{fontFamily: 'monospace'}} onClick={()=>exploreTxEth(log.transactionHash)}>{summary(strip0x(log.transactionHash))}</button>
           </div>
