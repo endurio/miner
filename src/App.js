@@ -682,14 +682,35 @@ function App () {
   }
   React.useEffect(() => fetchClaimables(), [wallet, contract])
 
-  async function doClaim(log) {
+  async function doClaimAll() {
     // check whether the tx is already submitted
     if (!wallet || !contract) {
       return Alert('!wallet || !contract', 'Claim Error')
     }
 
+    if (!await Confirm(`Claim all reward on ${network} network?`, 'Claim All Reward')) {
+      return
+    }
+    for (const log of listClaimableTx) {
+      if (mapClaimedTx && mapClaimedTx.get(log.transactionHash)) {
+        continue  // already claiming
+      }
+      await doClaim(log, false)
+    }
+  }
+
+  async function doClaim(log, interactive = true) {
+    // check whether the tx is already submitted
+    if (!wallet || !contract) {
+      console.error('!wallet || !contract')
+      if (interactive) {
+        Alert('!wallet || !contract', 'Claim Error')
+      }
+      return
+    }
+
     const amount = decShift(log.desc.args.value.toString(), -18)
-    if (!await Confirm(`Claim ${amount} END on ${network} network?`, 'Claim Reward')) {
+    if (interactive && !await Confirm(`Claim ${amount} END on ${network} network?`, 'Claim Reward')) {
       return
     }
 
@@ -703,9 +724,12 @@ function App () {
       if (found) {
         setSubmittedTx(found[0], undefined)
       }
+      // TODO: cleanup old items in mapClaimedTx
     } catch(err) {
       console.error(err)
-      Alert(extractReason(err), 'Claim Error')
+      if (interactive) {
+        Alert(extractReason(err), 'Claim Error')
+      }
     } finally {
       setClaiming(log.transactionHash, undefined)
     }
@@ -973,22 +997,6 @@ function App () {
       </div>
       {!isLoading && <div className="spacing flex-container indent"><span>{decShift(senderBalance, -8)} {coinType}</span></div>}
       <div className="spacing flex-container">
-        <div>Claimable Reward</div>
-        <div>{listClaimableTx ? <button onClick={()=>fetchClaimables(true)}>Reload</button> : <div className="lds-dual-ring"></div>}</div>
-      </div>
-      {listClaimableTx && listClaimableTx.map(log => ((!mapClaimedTx || !mapClaimedTx.get(log.transactionHash)) &&
-        <div className="spacing flex-container indent" key={log.transactionHash}>
-          <div className="flex-container">
-            <button style={{fontFamily: 'monospace'}} onClick={()=>exploreTxEth(log.transactionHash)}>{summary(strip0x(log.transactionHash))}</button>
-          </div>
-          <div>{decShift(log.desc.args.value.toString(), -18)} <a target='blank' href={`https://${network.toLowerCase()}.etherscan.io/token/${CONTRACT_ADDRESS[network]}?a=${miner}`}>END</a></div>
-          <div>{isClaiming.get(log.transactionHash) ?
-            <div className="lds-dual-ring"></div> :
-            <button onClick={()=>doClaim(log)}>Claim</button>
-          }</div>
-        </div>
-      ))}
-      <div className="spacing flex-container">
         <div>Confirmed Transactions</div>
         <div>{listConfirmedTx ? <button onClick={()=>fetchRecent(true)}>Reload</button> : <div className="lds-dual-ring"></div>}</div>
       </div>
@@ -1080,6 +1088,23 @@ function App () {
         {btxError && <span className="error">{btxError}</span>}
         {btxDisplay && <pre>{btxDisplay}</pre>}
       </div>
+      <div className="spacing flex-container">
+        <div>Claimable Reward</div>
+        <div>{listClaimableTx ? <button onClick={()=>fetchClaimables(true)}>Reload</button> : <div className="lds-dual-ring"></div>}</div>
+        {(listClaimableTx && listClaimableTx.length) ? <div><button onClick={()=>doClaimAll()}>Claim All</button></div> : ''}
+      </div>
+      {listClaimableTx && listClaimableTx.map(log => ((!mapClaimedTx || !mapClaimedTx.get(log.transactionHash)) &&
+        <div className="spacing flex-container indent" key={log.transactionHash}>
+          <div className="flex-container">
+            <button style={{fontFamily: 'monospace'}} onClick={()=>exploreTxEth(log.transactionHash)}>{summary(strip0x(log.transactionHash))}</button>
+          </div>
+          <div>{decShift(log.desc.args.value.toString(), -18)} <a target='blank' href={`https://${network.toLowerCase()}.etherscan.io/token/${CONTRACT_ADDRESS[network]}?a=${miner}`}>END</a></div>
+          <div>{isClaiming.get(log.transactionHash) ?
+            <div className="lds-dual-ring"></div> :
+            <button onClick={()=>doClaim(log)}>Claim</button>
+          }</div>
+        </div>
+      ))}
       <div className='spacing flex-container footer'>
         <div><a href='/'>Home</a></div>
         <div><a href='/doc'>Documentation</a></div>
