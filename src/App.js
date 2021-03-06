@@ -129,7 +129,7 @@ function App () {
   const [miner, setMiner] = React.useState()
   const [sender, setSender] = React.useState()
   const [maxBounty, setMaxBounty] = usePersistent('maxBounty', 8)
-  const [fee, setFee] = usePersistentMap('fee', {'BTC': 1306, 'BTC-TEST': 999})
+  const [bountyAmount, setBountyAmount] = usePersistentMap('bountyAmount', {'BTC': 999, 'BTC-TEST': 333})
   const [client, setClient] = React.useState()
   const clientRef = React.useRef(client)
   clientRef.current = client
@@ -407,8 +407,8 @@ function App () {
       return
     }
 
-    const txFee = parseInt(fee.get(coinType))
-    if (isNaN(txFee)) {
+    const amount = parseInt(bountyAmount.get(coinType))
+    if (isNaN(amount)) {
       setBtx('invalid fee')
       return
     }
@@ -422,7 +422,7 @@ function App () {
       }
     })
 
-    const btx = search(1, txFee)
+    const btx = search(amount, amount*4)
     setBtx(btx)
 
     // binary search
@@ -431,9 +431,9 @@ function App () {
       const mid = Math.floor((start + end)/2)
       const tb = build(mid)
       if (isValid(tb)) {
-        return search(start, mid-1, tb)
+        return search(mid+1, end, tb)
       } else {
-        return search(mid+1, end, last)
+        return search(start, mid-1, last)
       }
 
       function isValid(tb) {
@@ -448,7 +448,7 @@ function App () {
           const out = tx.outs[i]
           const outputSize = 8 + 1 + out.script.length
           const minTxSize = 10 + inputSize + outputSize
-          if (txFee * minTxSize > out.value * txSize) {
+          if (tb.fee * minTxSize > out.value * txSize) {
             return false
           }
         }
@@ -456,7 +456,7 @@ function App () {
       }
     }
 
-    function build(bountyAmount, outValue = 0) {
+    function build(fee, outValue = 0) {
       const tb = new TransactionBuilder(getNetwork(coinType))
 
       // add the memo output
@@ -472,11 +472,12 @@ function App () {
   
       buildWithoutChange()
 
-      const changeValue = inValue - outValue - txFee
+      const changeValue = inValue - outValue - fee
       if (changeValue <= 0) {
         return 'insufficient fund'
       }
       tb.addOutput(sender.address, changeValue)
+      tb.fee = fee
 
       return tb
 
@@ -491,7 +492,6 @@ function App () {
             // const rec = recipients[recIdx % (recipients.length>>1)]     // duplicate recipient
             const rec = recipients[recIdx]
             const output = rec.outputs[rec.outputs.length-1]
-            const amount = bountyAmount
             if (outValue + amount > inValue) {
               break;  // need more input
             }
@@ -518,7 +518,7 @@ function App () {
         };
       }
     }
-  }, [input, fee, xmine])
+  }, [input, bountyAmount, xmine])
 
   // auto submit tx
   React.useEffect(() => {
@@ -933,9 +933,12 @@ function App () {
         if (adr !== sender.address) {
           btxDisplay += `${decShift(v, -8)} → ${adr}\n`
         } else {
-          btxDisplay += `${decShift(v, -8)} → (change)`
+          btxDisplay += `${decShift(v, -8)} → (change)\n`
         }
       }
+    }
+    if (btx.fee) {
+      btxDisplay += `${decShift(btx.fee, -8)} → (fee)`
     }
     return btxDisplay
   }
@@ -1030,7 +1033,7 @@ function App () {
         ))
       }
       <div className='spacing flex-container'>
-        <div className="flex-container">Min Bounty:&nbsp;
+        <div className="flex-container">Min Recipients&nbsp;
           <input maxLength={1} style={{width: 30}}
             value={minAutoBounty} onChange={event=>{
               const value = parseInt(event.target.value)
@@ -1046,7 +1049,7 @@ function App () {
         }</div>}
       </div>
       <div className="spacing flex-container">
-        <div className="flex-container">X-Mine:&nbsp;
+        <div className="flex-container">X-Mine&nbsp;
           <input maxLength={3} style={{width: 30}}
             value={xmine.get(coinType)} onChange={event=>{
               const value = parseInt(event.target.value)
@@ -1058,7 +1061,7 @@ function App () {
             }}
           />
         </div>
-        <div className="flex-container">Max Bounty:&nbsp;
+        <div className="flex-container">Max Recipients&nbsp;
           <input maxLength={1} style={{width: 30}}
             value={maxBounty} onChange={event=>{
               const value = parseInt(event.target.value)
@@ -1068,12 +1071,12 @@ function App () {
             }}
           />
         </div>
-        <div className="flex-container">Fee:&nbsp;
+        <div className="flex-container">Bounty&nbsp;
           <input style={{width: 60}}
-            value={fee.get(coinType)} onChange={event=>{
+            value={bountyAmount.get(coinType)} onChange={event=>{
               const value = parseInt(event.target.value)
               if (value > 0) {
-                setFee(coinType, value)
+                setBountyAmount(coinType, value)
               }
             }}
           />
