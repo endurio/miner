@@ -325,22 +325,22 @@ function App () {
   React.useEffect(fetchData, [sender, client]) // ensures refresh if referential identity of library doesn't change across chainIds
 
   React.useEffect(() => {
-    if (!client || !sender) {
+    if (!client || !sender || !chainHead) {
       return
     }
     client.getUnconfirmedTxs(sender.address)
       .then(pendingTxs => {
         if (pendingTxs) {
           pendingTxs.forEach(tx => {
-            if (chainHead) {
+            if (!mapSentTx.get(tx.hash)) {
               tx.targetBlock = chainHead.blocks
+              setSentTx(tx.hash, tx)
             }
-            setSentTx(tx.hash, tx)
           })
         }
       })
       .catch(console.error)
-  }, [sender, client])
+  }, [sender, client, chainHead])
 
   function fetchUnspent(force) {
     if (!sender || !client) {
