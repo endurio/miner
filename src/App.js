@@ -19,7 +19,14 @@ const { keccak256, computeAddress } = ethers.utils
 const handleFocus = (event) => event.target.select()
 
 const IMPLEMENTATIONS = ['Endurio', 'PoR', 'RefNetwork', 'BrandMarket']
-const CONTRACT_ABI = IMPLEMENTATIONS.reduce((abi, i) => abi.concat(require(`./abis/${i}.json`).abi), [])
+const CONTRACT_ABI = IMPLEMENTATIONS
+  .reduce((abi, i) => abi.concat(require(`./abis/${i}.json`).abi), [])
+  .reduce((items, item) => {
+    if (!items.some(({name}) => name === item.name)) {
+      items.push(item)
+    }
+    return items
+  }, [])
 const CONTRACT_ADDRESS = {
   Ropsten: '0x0252d8DFd20938f5bd314dEd7f03Cd82070Dc1cc',
 }
