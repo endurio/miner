@@ -966,7 +966,7 @@ function App () {
       }
     }
     doSend(false)
-  }, [btx, autoMining, minAutoBounty])
+  }, [btx])
 
   function toggleMining() {
     if (!!autoMining) {
