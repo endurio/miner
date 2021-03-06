@@ -16,6 +16,8 @@ import { Alert, Prompt, Confirm, CustomDialog } from 'react-st-modal'
 import { isMobile } from 'react-device-detect'
 const { keccak256, computeAddress } = ethers.utils
 
+const handleFocus = (event) => event.target.select()
+
 const IMPLEMENTATIONS = ['Endurio', 'PoR', 'RefNetwork', 'BrandMarket']
 const CONTRACT_ABI = IMPLEMENTATIONS.reduce((abi, i) => abi.concat(require(`./abis/${i}.json`).abi), [])
 const CONTRACT_ADDRESS = {
@@ -1034,7 +1036,7 @@ function App () {
       }
       <div className='spacing flex-container'>
         <div className="flex-container">Min Recipients&nbsp;
-          <input maxLength={1} style={{width: 30}}
+          <input onFocus={handleFocus} maxLength={1} style={{width: 30}}
             value={minAutoBounty} onChange={event=>{
               const value = parseInt(event.target.value)
               if (value > 0 && value <= 8) {
@@ -1050,7 +1052,7 @@ function App () {
       </div>
       <div className="spacing flex-container">
         <div className="flex-container">X-Mine&nbsp;
-          <input maxLength={3} style={{width: 30}}
+          <input onFocus={handleFocus} maxLength={3} style={{width: 30}}
             value={xmine.get(coinType)} onChange={event=>{
               const value = parseInt(event.target.value)
               if (isNaN(value) || value <= 0) {
@@ -1062,7 +1064,7 @@ function App () {
           />
         </div>
         <div className="flex-container">Max Recipients&nbsp;
-          <input maxLength={1} style={{width: 30}}
+          <input onFocus={handleFocus} maxLength={1} style={{width: 30}}
             value={maxBounty} onChange={event=>{
               const value = parseInt(event.target.value)
               if (value >= 0 && value <= 8) {
@@ -1072,7 +1074,7 @@ function App () {
           />
         </div>
         <div className="flex-container">Bounty&nbsp;
-          <input style={{width: 60}}
+          <input onFocus={handleFocus} style={{width: 60}}
             value={bountyAmount.get(coinType)} onChange={event=>{
               const value = parseInt(event.target.value)
               if (value > 0) {
