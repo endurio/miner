@@ -436,7 +436,8 @@ function App () {
 
     const amount = parseInt(bountyAmount.get(coinType))
     if (isNaN(amount)) {
-      setBtx('invalid fee')
+      console.error('invalid fee')
+      setBtx(undefined)
       return
     }
 
