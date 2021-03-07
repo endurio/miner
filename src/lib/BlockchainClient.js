@@ -188,7 +188,11 @@ function BlockchainClient(opts) {
     sendTx(txHex) {
       return new Promise((resolve, reject) => {
         if (!!bc) {
-          bc.post('/txs/push', {tx: txHex}, (unknown, {error, tx}) => {
+          bc.post('/txs/push', {tx: txHex}, (unknown, res) => {
+            if (!res) {
+              return reject('unknown blockcypher response for /txs/push', unknown, res)
+            }
+            const {error, tx} = res
             if (error) return reject(error)
             return resolve(tx)
           })
