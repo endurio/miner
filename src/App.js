@@ -267,10 +267,10 @@ function App () {
     }
     client.getInfo()
       .then(data => {
-        let nextPoll = 10; // default after 10s
+        let nextPoll = 30; // default after 30s
         const chainHead = chainHeadRef.current
         if (!chainHead || chainHead.bestblockhash !== data.bestblockhash) {
-          if (chainHead && !isMobile) {  // not the first poll
+          if (chainHead) {  // not the first poll
             nextPoll = 9*60
           }
           setChainHead(data)
