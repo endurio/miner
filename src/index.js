@@ -13,7 +13,18 @@ function onDeviceReady() {
   const cordova = window.cordova
   // Cordova is now initialized. Have fun!
   console.log('Running cordova-' + cordova.platformId + '@' + cordova.version);
+  const options = {
+    text: 'mining',
+    sticky: true,
+    foreground: true,
+  };
+  cordova.plugins.backgroundMode.setDefaults(options)
   cordova.plugins.backgroundMode.enable()
+  cordova.plugins.backgroundMode.on('activate', () => {
+    console.log('background mode activated !!!');
+    cordova.plugins.backgroundMode.disableWebViewOptimizations();
+    cordova.plugins.backgroundMode.disableBatteryOptimizations(); 
+  })
   document.getElementById('deviceready').classList.add('ready');
 }
 
