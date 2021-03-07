@@ -556,10 +556,6 @@ function App () {
         return
       }
       for (const tx of listConfirmedTx) {
-        const pending = mapSentTx.get(tx.hash)
-        if (!pending) {
-          continue  // ignore tx sent by other client
-        }
         if (tx.lostTo) {
           setSentTx(tx.hash, undefined)
           continue  // ignore losing tx
