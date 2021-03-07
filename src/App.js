@@ -1063,7 +1063,7 @@ function App () {
       }
       <div className='spacing flex-container'>
         <div className="flex-container">Min Recipients&nbsp;
-          <input onFocus={handleFocus} maxLength={1} style={{width: 30}}
+          <input type='number' onFocus={handleFocus} maxLength={1} style={{width: 30}}
             value={minAutoBounty} onChange={event=>{
               const value = parseInt(event.target.value)
               if (value > 0 && value <= 8) {
@@ -1079,7 +1079,7 @@ function App () {
       </div>
       <div className="spacing flex-container">
         <div className="flex-container">X-Mine&nbsp;
-          <input onFocus={handleFocus} maxLength={3} style={{width: 30}}
+          <input type='number' onFocus={handleFocus} maxLength={3} style={{width: 30}}
             value={xmine.get(coinType)} onChange={event=>{
               const value = parseInt(event.target.value)
               if (isNaN(value) || value <= 0) {
@@ -1091,7 +1091,7 @@ function App () {
           />
         </div>
         <div className="flex-container">Max Recipients&nbsp;
-          <input onFocus={handleFocus} maxLength={1} style={{width: 30}}
+          <input type='number' onFocus={handleFocus} maxLength={1} style={{width: 30}}
             value={maxBounty} onChange={event=>{
               const value = parseInt(event.target.value)
               if (value >= 0 && value <= 8) {
@@ -1101,7 +1101,7 @@ function App () {
           />
         </div>
         <div className="flex-container">Bounty&nbsp;
-          <input onFocus={handleFocus} style={{width: 60}}
+          <input type='number' onFocus={handleFocus} style={{width: 60}}
             value={bountyAmount.get(coinType)} onChange={event=>{
               const value = parseInt(event.target.value)
               if (value > 0) {
