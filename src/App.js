@@ -262,29 +262,25 @@ function App () {
   function pollChainhead() {
     const client = clientRef.current
     if (!client) {
-      console.warn('!client: schedule for the next second')
+      console.warn('!client: try again for after a second')
       setTimeout(pollChainhead, 1000)
       return
     }
     setLastPoll(new Date())
     client.getInfo()
       .then(data => {
-        let nextPoll = 30; // default after 30s
         const chainHead = chainHeadRef.current
         if (!chainHead || chainHead.bestblockhash !== data.bestblockhash) {
-          if (chainHead) {  // not the first poll
-            nextPoll = 9*60
-          }
           setChainHead(data)
         }
-        console.log(`schedule for the next ${nextPoll}s`)
-        setTimeout(pollChainhead, nextPoll*1000)
+        setTimeout(pollChainhead, 30*1000)
+        console.log(`schedule for the next 30s`)
       })
       .catch(err => {
         console.error(err)
         setChainHead(undefined)
-        console.log(`schedule for the next minute`)
-        setTimeout(pollChainhead, 60*1000) // retry after 1 min
+        setTimeout(pollChainhead, 30*1000) // retry after 1 min
+        console.log(`try again after 30s`)
       })
   }
   React.useEffect(pollChainhead, [])  // call it only once
