@@ -445,9 +445,13 @@ function App () {
     const recipients = input.recipients
     const inputs = [input]
     utxos.forEach(o => {
-      if (o.txid !== input.txid || o.vout !== input.vout) {
-        inputs.push(o)
+      if (input.txid && o.txid == input.txid && o.vout == input.vout) {
+        return
       }
+      if (input.tx_hash && o.tx_hash == input.tx_hash && o.index == input.index) {
+        return
+      }
+      inputs.push(o)
     })
 
     const btx = search(amount, amount*4)
@@ -498,18 +502,19 @@ function App () {
       let inValue = 0
       // build the mining outputs and required inputs
   
-      buildWithoutChange()
+      buildWithoutChange(fee)
 
       const changeValue = inValue - outValue - fee
       if (changeValue <= 0) {
-        return 'insufficient fund'
+        console.error('insufficient fund')
+        return
       }
       tb.addOutput(sender.address, changeValue)
       tb.fee = fee
 
       return tb
 
-      function buildWithoutChange() {
+      function buildWithoutChange(fee) {
         let recIdx = 0
         for (const input of inputs) {
           const index = input.hasOwnProperty('tx_output_n') ? input.tx_output_n : input.index
@@ -520,7 +525,7 @@ function App () {
             // const rec = recipients[recIdx % (recipients.length>>1)]     // duplicate recipient
             const rec = recipients[recIdx]
             const output = rec.outputs[rec.outputs.length-1]
-            if (outValue + amount > inValue) {
+            if (outValue + amount + fee > inValue) {
               break;  // need more input
             }
             outValue += amount
