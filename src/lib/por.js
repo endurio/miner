@@ -217,18 +217,22 @@ function _extractTxParams(tx) {
   const hex = tt.toHex()
   // expect(Transaction.fromHex(hex).getId()).to.equal(tx.getId(), 'bad code: stripTxWitness')
 
-  // lazily assume that the each input sequence hex is searchable
-  let pos = 0;
-  for (const input of tx.inputs) {
-    const sequence = input.sequence.toString(16).padStart(8, '0').reverseHex()
-    pos = hex.indexOf(sequence, pos)
-    //   expect(pos).to.be.at.least(0, `input sequence not found: ${sequence}`);
-    pos += 8;
+  const sequence = tx.inputs[tx.inputs.length-1].sequence.toString(16).padStart(8, '0').reverseHex()
+  const nOuts = tx.outputs.length.toString(16).padStart(2,'0')  // assume that nOuts fits in 1 byte
+  const value = tx.outputs[0].value.toString(16).padStart(16, '0').reverseHex()
+  let voutStart = hex.indexOf(sequence + nOuts + value)
+  if (voutStart < 0) {
+    throw 'parsing transaction vin/vout failed'
+  }
+  voutStart += 8  // 4 bytes sequence  
+
+  let vinStart = 8; // 4 bytes version
+  if (hex.substr(8, 2) == '00') {
+    vinStart += 4   // 2 more bytes for witness flag
   }
 
-  const vinStart = 8; // 2 more bytes for witness flag
-  const vin = '0x' + hex.substring(vinStart, pos);
-  const vout = '0x' + hex.substring(pos, hex.length - 8); // the last 8 bytes is lock time
+  const vin = '0x' + hex.substring(vinStart, voutStart);
+  const vout = '0x' + hex.substring(voutStart, hex.length - 8); // the last 8 bytes is lock time
   return [tx.version, vin, vout, tx.locktime];
 
   function stripTxWitness(tt) {
