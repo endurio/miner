@@ -958,11 +958,16 @@ function App () {
         btxDisplay += 'OP_RETURN ' + utils.toUtf8String(Buffer.from(asm.substring(10), 'hex'))
         btxDisplay += (v ? ` with ${decShift(v, -8)}\n` : '\n')
       } else {
-        const adr = address.fromOutputScript(s, btx.network)
-        if (adr !== sender.address) {
-          btxDisplay += `${decShift(v, -8)} → ${adr}\n`
-        } else {
-          btxDisplay += `${decShift(v, -8)} → (change)\n`
+        try {
+          const adr = address.fromOutputScript(s, btx.network)
+          if (adr !== sender.address) {
+            btxDisplay += `${decShift(v, -8)} → ${adr}\n`
+          } else {
+            btxDisplay += `${decShift(v, -8)} → (change)\n`
+          }
+        } catch(err) {
+          console.error('unknown script', err, s)
+          btxDisplay += `${decShift(v, -8)} → [${asm}]\n`
         }
       }
     }
