@@ -340,8 +340,10 @@ function App () {
         }
         // pending txs
         txs.forEach(tx => {
-          if (!mapSentTx.get(tx.tx_hash)) {
-            setSentTx(tx.tx_hash, tx)
+          tx.hash = tx.tx_hash
+          delete tx.tx_hash
+          if (!mapSentTx.get(tx.hash)) {
+            setSentTx(tx.hash, tx)
           }
         })
         // clear the transaction
