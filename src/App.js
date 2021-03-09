@@ -155,6 +155,7 @@ function App () {
   const [minerBalance, setMinerBalance] = React.useState()
   const [contract, setContract] = React.useState()
   const [tokenBalance, setTokenBalance] = React.useState()
+  const [pendingTxs, setPendingTxs] = React.useState()
   const [mapSentTx, setSentTx] = usePersistentMap('sent')                 // miningTx.hash => miningTx
   const [listConfirmedTx, setConfirmedTx] = React.useState()
   const [isSubmitting, setSubmitting] = useMap()
@@ -165,6 +166,7 @@ function App () {
   const [minAutoBounty, setMinAutoBounty] = usePersistent('minAutoBounty', 3)
   const [autoMining, setAutoMining] = React.useState(false)
   const [lastPoll, setLastPoll] = React.useState()
+  const [isLoading, setLoading] = React.useState(false)
 
   // ethereum provider
   React.useEffect(() => {
@@ -270,7 +272,7 @@ function App () {
     client.getInfo()
       .then(data => {
         const chainHead = chainHeadRef.current
-        if (!chainHead || chainHead.bestblockhash !== data.bestblockhash) {
+        if (!chainHead || data.blocks > chainHead.blocks) { // only care about chain height
           setChainHead(data)
         }
         setTimeout(pollChainhead, 30*1000)
@@ -285,18 +287,7 @@ function App () {
   }
   React.useEffect(pollChainhead, [])  // call it only once
 
-  React.useEffect(() => {
-    if (!chainHead) {
-      return
-    }
-    console.error('new block', chainHead)
-    if (autoMining) {
-      fetchUnspent()  // to trigger auto mine
-      fetchRecent()   // to trigger auto submit
-    }
-  }, [chainHead])
-
-  function fetchData(unspent) {
+  function fetchData() {
     if (!client) {
       return
     }
@@ -316,52 +307,63 @@ function App () {
         console.error(err)
         setChainHead(undefined)
       })
-    if (!!unspent) {
-      fetchUnspent()
-    }
   }
   React.useEffect(fetchData, [sender, client]) // ensures refresh if referential identity of library doesn't change across chainIds
 
-  React.useEffect(() => {
-    if (!client || !sender || !chainHead) {
-      return
-    }
-    client.getUnconfirmedTxs(sender.address)
-      .then(pendingTxs => {
-        if (pendingTxs) {
-          pendingTxs.forEach(tx => {
-            if (!mapSentTx.get(tx.hash)) {
-              tx.targetBlock = chainHead.blocks
-              setSentTx(tx.hash, tx)
-            }
-          })
-        }
-      })
-      .catch(console.error)
-  }, [sender, client, chainHead])
-
-  function fetchUnspent(force) {
+  function fetchUnspent() {
     if (!sender || !client) {
       return
     }
-    if (force) {
-      setUTXOs(undefined)
-    }
+    setLoading(true)
     client.getUnspents(sender.address)
-      .catch(console.error)
-      .then((unspents) => {
-        setUTXOs(unspents)
-        if (unspents && unspents.hasOwnProperty('balance')) {
+      .catch(err => {
+        setLoading(false)
+        console.error(err)
+      })
+      .then(unspents => {
+        setLoading(false)
+        if (!unspents) {
+          setUTXOs(unspents)
+          return
+        }
+        // process balance
+        if (unspents.hasOwnProperty('balance')) {
           setSenderBalance(unspents.balance)
         }
+        // process unconfirmed txs
+        const txs = unspents.unconfirmed || []
+        setPendingTxs(txs)
+        console.log('pending txs', txs)
+        if (!txs.length) {  // no pending, update the UTXO to trigger transaction building
+          setUTXOs(unspents)
+          return
+        }
+        // pending txs
+        txs.forEach(tx => {
+          if (!mapSentTx.get(tx.tx_hash)) {
+            setSentTx(tx.tx_hash, tx)
+          }
+        })
+        // clear the transaction
+        setUTXOs(undefined)
+        setInput(undefined)
+        setBtx(undefined)
       })
   }
-  React.useEffect(() => {
-    if (!!chainHead) {
-      fetchUnspent()
-    }
-  }, [sender, chainHead])
+  React.useEffect(fetchUnspent, [sender, client])
 
+  React.useEffect(() => {
+    if (!chainHead) {
+      return
+    }
+    console.error('new block', chainHead)
+    if (autoMining) {
+      fetchUnspent()  // to trigger auto mine
+      fetchRecent()   // to trigger auto submit
+    }
+  }, [chainHead])
+
+  // search for bounty input on utxos changed
   React.useEffect(() => {
     if (!client || !chainHead || !utxos) {
       return
@@ -829,12 +831,25 @@ function App () {
     if (!client) {
       throw '!client'
     }
+    if (!chainHead) {
+      throw '!chainHead'
+    }
     if (!btx) {
       throw '!btx'
     }
 
-    if (interactive && !await Confirm(`Send the bounty transaction using ${coinType}?`, 'Send Transaction')) {
-      return
+    if (pendingTxs && pendingTxs.length) {
+      if (!interactive) {
+        console.warn('auto mining: already mine this block')
+        return
+      }
+      if (!await Confirm(`A transaction is already sent for this block, do you really want to send another one using ${coinType}?`, 'Duplicated Transaction')) {
+        return
+      }
+    } else {
+      if (interactive && !await Confirm(`Send the bounty transaction using ${coinType}?`, 'Send Transaction')) {
+        return
+      }
     }
 
     let tx = btx.buildIncomplete()
@@ -845,26 +860,21 @@ function App () {
         btx.sign(i, signer)
       }
       console.log('transaction signed')
+      btx.signed = true
       setBtx(btx)
     }
 
     const txHex = btx.build().toHex()
     console.log('sending signed tx', txHex)
 
-    // clear the last built tx
-    setBtx(undefined)   // clear the about-to-send tx
-    setUTXOs(undefined)
-    setInput(undefined)
-
     try {
       const tx = await client.sendTx(txHex)
-        console.log('tx successfully sent', tx)
-        if (chainHead) {
-          tx.targetBlock = chainHead.blocks
-        }
-        setSentTx(tx.hash, tx)
-        // fetchRecent and auto-submit after 40 mins
-        setTimeout(fetchRecent, 1000*60*40);
+      if (!tx) {
+        throw 'Unable to send transaction'
+      }
+      console.log('tx successfully sent', tx)
+      setSentTx(tx.hash, tx)
+      setTimeout(fetchRecent, 45*60*1000) // attempt to auto submit after 45 mins
     } catch (err) {
       if (interactive) {
         Alert(err.toString(), 'Transaction Sending Error')
@@ -938,9 +948,6 @@ function App () {
     }
   }
 
-  // statuses
-  const isLoading = !chainHead || isNaN(senderBalance)
-
   if (typeof btx === 'string') {
     var btxError = btx
   } else if (btx) {
@@ -980,6 +987,10 @@ function App () {
     if (!btx || !autoMining) {
       return
     }
+    if (btx.signed) {
+      console.warn('auto mining: already signed and sent', tx)
+      return  // already signed and sent
+    }
     const tx = btx.buildIncomplete()
     if (tx.outs.length < 2+minAutoBounty) {
       // only send when there's at least a number of bounty outputs
@@ -987,13 +998,6 @@ function App () {
       // try again after half an interval, if the interval > 5 min
       setTimeout(fetchUnspent, 5*60*1000)
       return
-    }
-    if (mapSentTx && mapSentTx.size && chainHead) {
-      const alreadySent = Array.from(mapSentTx.values()).some(tx => tx.targetBlock == chainHead.blocks)
-      if (alreadySent) {
-        console.warn('auto mining: already mine this block')
-        return
-      }
     }
     doSend(false)
   }, [btx])
@@ -1006,7 +1010,7 @@ function App () {
     }
     console.log('start mining')
     setAutoMining(true)
-    fetchUnspent()  // trigger the first fetchUnspent
+    fetchUnspent()  // trigger the first fetchPending
   }
 
   return (
@@ -1020,8 +1024,8 @@ function App () {
           Network:&nbsp;<Dropdown options={networks} onChange={item=>setNetwork(item.value)} value={network} placeholder="Network" />
         </div>
         {!!miner && <span className="ellipsis">Miner: {miner}</span>}
-        {!minerBalance && <div><div className="lds-dual-ring"></div></div>}
       </div>
+      {isNaN(minerBalance) && <div className="spacing flex-container indent"><div className="lds-dual-ring"></div></div>}
       {minerBalance && <div className="spacing flex-container indent"><span>{decShift(minerBalance, -18)} <a target='blank' href={`https://${network.toLowerCase()}.etherscan.io/address/${miner}`}>ETH</a></span></div>}
       {tokenBalance && <div className="spacing flex-container indent"><span>{decShift(tokenBalance, -18)} <a target='blank' href={`https://${network.toLowerCase()}.etherscan.io/token/${CONTRACT_ADDRESS[network]}?a=${miner}`}>END</a></span></div>}
       <div className="spacing flex-container">
@@ -1030,7 +1034,11 @@ function App () {
         </div>
         {!!sender && <span className="ellipsis">Sender: {sender.address}</span>}
       </div>
-      {!isLoading && <div className="spacing flex-container indent"><span>{decShift(senderBalance, -8)} {coinType}</span></div>}
+      <div className="spacing flex-container indent">{
+        isNaN(senderBalance) ?
+          <div className="lds-dual-ring"></div> :
+          <span>{decShift(senderBalance, -8)} {coinType}</span>
+      }</div>
       <div className="spacing flex-container">
         <div>Confirmed Transactions</div>
         <div>{listConfirmedTx ? <button onClick={()=>fetchRecent(true)}>Reload</button> : <div className="lds-dual-ring"></div>}</div>
@@ -1055,6 +1063,7 @@ function App () {
       ))}
       <div className="spacing flex-container">
         <div>Pending Transactions</div>
+        <div>{isLoading ? <div className="lds-dual-ring"></div> : <button onClick={()=>fetchUnspent()}>Reload</button>}</div>
       </div>
       {(mapSentTx && mapSentTx.size > 0) &&
         Array.from(mapSentTx.values()).map(tx => ((!listConfirmedTx || !listConfirmedTx.some(t => t.hash == tx.hash)) &&
@@ -1114,10 +1123,10 @@ function App () {
             }}
           />
         </div>
-        <div>{isLoading ? <div className="lds-dual-ring"></div> : <button onClick={()=>fetchData(true)}>Rebuild</button>}</div>
-        {(utxos && utxos.length) && <div>
+        <div>{isLoading ? <div className="lds-dual-ring"></div> : <button onClick={()=>fetchUnspent()}>Rebuild</button>}</div>
+        {(utxos && utxos.length && (!btx || !btx.signed)) && <div>
           {(!btxError&&!btxDisplay) && <div className="lds-dual-ring"></div>}
-          {((client || apiKeys.get('BlockCypher')) && !!btxDisplay) && <button onClick={() => doSend()}>Send</button>}
+          {!!btxDisplay && <button onClick={() => doSend()}>Send</button>}
         </div>}
       </div>
       <div className='spacing flex-container indent'>

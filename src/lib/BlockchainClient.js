@@ -133,10 +133,11 @@ function BlockchainClient(opts) {
     getUnspents(address) {
       return new Promise((resolve, reject) => {
         if (!!bc) {
-          bc.get(`/addrs/${address}?unspentOnly=true`, (err, data) => {
+          return bc.get(`/addrs/${address}?unspentOnly=true`, (err, data) => {
             if (err) return reject(err)
             const unspents = data.txrefs || []
             unspents.balance = data.final_balance
+            unspents.unconfirmed = data.unconfirmed_txrefs
             return resolve(unspents)
           })
         }
@@ -163,20 +164,6 @@ function BlockchainClient(opts) {
         })
       })
     },
-    getUnconfirmedTxs(address) {
-      return new Promise((resolve, reject) => {
-        if (!!bc) {
-          bc.get(`/txs`, (err, data) => {
-            if (err) return reject(err)
-            if (address) {
-              data = data.filter(tx => tx.inputs.some(input => input.addresses.some(a => a == address)))
-            }
-            return resolve(data)
-          })
-        }
-        return [] // tatum not support for this yet
-      })
-    },
     getTxs(address, pageSize=50, offset=0) {
       return new Promise((resolve, reject) => {
         this.get(`/transaction/address/${address}?pageSize=${pageSize}&offset=${offset}`, (err, txs) => {
@@ -188,7 +175,7 @@ function BlockchainClient(opts) {
     sendTx(txHex) {
       return new Promise((resolve, reject) => {
         if (!!bc) {
-          bc.post('/txs/push', {tx: txHex}, (unknown, res) => {
+          return bc.post('/txs/push', {tx: txHex}, (unknown, res) => {
             if (!res) {
               return reject('unknown blockcypher response for /txs/push', unknown, res)
             }
