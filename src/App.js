@@ -164,6 +164,7 @@ function App () {
   const [mapClaimedTx, setClaimedTx] = usePersistentMap('claimed')        // submitTx.hash => claimTx.res
   const [minAutoBounty, setMinAutoBounty] = usePersistent('minAutoBounty', 3)
   const [autoMining, setAutoMining] = React.useState(false)
+  const [lastPoll, setLastPoll] = React.useState()
 
   // ethereum provider
   React.useEffect(() => {
@@ -265,6 +266,7 @@ function App () {
       setTimeout(pollChainhead, 1000)
       return
     }
+    setLastPoll(new Date())
     client.getInfo()
       .then(data => {
         let nextPoll = 30; // default after 30s
@@ -1081,6 +1083,7 @@ function App () {
           <button onClick={()=>toggleMining()}>⛔ Stop</button> :
           <button onClick={()=>toggleMining()}>▶️ Start</button>
         }</div>}
+        {(autoMining && lastPoll) && <div>{lastPoll.toLocaleTimeString('en-GB')}</div>}
       </div>
       <div className="spacing flex-container">
         <div className="flex-container">X-Mine&nbsp;
