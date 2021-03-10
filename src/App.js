@@ -320,7 +320,7 @@ function App () {
     }
     setLoading(true)
     try {
-      // attempt atmost 4 times: after 0, 20, 40 and 60s
+      // attempt atmost 4 times: after 0, 15, 30 and 45s
       for (let i = 0; i < 4; ++i) {
         var unspents = await client.getUnspents(sender.address)
         if (!unspents) {
@@ -332,8 +332,8 @@ function App () {
           break
         }
         console.log('pending txs', unspents.unconfirmed)
-        // retry after 20s
-        await new Promise(resolve => setTimeout(resolve, 20*1000))
+        // retry after 15s
+        await new Promise(resolve => setTimeout(resolve, 15*1000))
       }
       // process balance
       if (unspents.hasOwnProperty('balance')) {
