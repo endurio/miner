@@ -310,59 +310,69 @@ function App () {
   }
   React.useEffect(fetchData, [sender, client]) // ensures refresh if referential identity of library doesn't change across chainIds
 
-  function fetchUnspent() {
+  async function fetchMiningData(expectNoPending) {
     if (!sender || !client) {
       return
     }
+    if (isLoading) {
+      console.warn('already is being mined')
+      return
+    }
     setLoading(true)
-    client.getUnspents(sender.address)
-      .catch(err => {
-        setLoading(false)
-        console.error(err)
-      })
-      .then(unspents => {
-        setLoading(false)
+    try {
+      // attempt atmost 4 times: after 0, 20, 40 and 60s
+      for (let i = 0; i < 4; ++i) {
+        var unspents = await client.getUnspents(sender.address)
         if (!unspents) {
+          console.warn('no UTXO to mine')
           setUTXOs(unspents)
           return
         }
-        // process balance
-        if (unspents.hasOwnProperty('balance')) {
-          setSenderBalance(unspents.balance)
+        if (!expectNoPending || !unspents.unconfirmed || !unspents.unconfirmed.length) {
+          break
         }
-        // process unconfirmed txs
-        const txs = unspents.unconfirmed || []
-        setPendingTxs(txs)
-        console.log('pending txs', txs)
-        if (!txs.length) {  // no pending, update the UTXO to trigger transaction building
-          setUTXOs(unspents)
-          return
+        console.log('pending txs', unspents.unconfirmed)
+        // retry after 20s
+        await new Promise(resolve => setTimeout(resolve, 20*1000))
+      }
+      // process balance
+      if (unspents.hasOwnProperty('balance')) {
+        setSenderBalance(unspents.balance)
+      }
+      // process unconfirmed txs
+      const txs = unspents.unconfirmed || []
+      setPendingTxs(txs)
+      if (!txs.length) {  // no pending, update the UTXO to trigger transaction building
+        console.log('UTXOs', unspents)
+        setUTXOs(unspents)
+        return
+      }
+      // pending txs
+      txs.forEach(tx => {
+        tx.hash = tx.tx_hash
+        delete tx.tx_hash
+        if (!mapSentTx.get(tx.hash)) {
+          setSentTx(tx.hash, tx)
         }
-        // pending txs
-        txs.forEach(tx => {
-          tx.hash = tx.tx_hash
-          delete tx.tx_hash
-          if (!mapSentTx.get(tx.hash)) {
-            setSentTx(tx.hash, tx)
-          }
-        })
-        // clear the transaction
-        setUTXOs(undefined)
-        setInput(undefined)
-        setBtx(undefined)
       })
+      // clear the transaction
+      setUTXOs(undefined)
+      setInput(undefined)
+      setBtx(undefined)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setLoading(false)
+    }
   }
-  React.useEffect(fetchUnspent, [sender, client])
 
   React.useEffect(() => {
     if (!chainHead) {
       return
     }
-    console.error('new block', chainHead)
-    if (autoMining) {
-      fetchUnspent()  // to trigger auto mine
-      fetchRecent()   // to trigger auto submit
-    }
+    console.error('!!! NEW BLOCK !!!', chainHead)
+    fetchMiningData(autoMining) // to trigger auto mine
+    fetchConfirmedTxs()         // to trigger auto submit
   }, [chainHead])
 
   // search for bounty input on utxos changed
@@ -585,7 +595,7 @@ function App () {
     }
   }, [listConfirmedTx])
 
-  function fetchRecent(manual) {
+  function fetchConfirmedTxs(manual) {
     if (!client || !contract) {
       return
     }
@@ -661,7 +671,7 @@ function App () {
         }
       })
   }
-  React.useEffect(fetchRecent, [chainHead, client, contract])
+  React.useEffect(fetchConfirmedTxs, [chainHead, client, contract])
 
   async function fetchClaimables(manual) {
     // check whether the tx is already submitted
@@ -876,7 +886,7 @@ function App () {
       }
       console.log('tx successfully sent', tx)
       setSentTx(tx.hash, tx)
-      setTimeout(fetchRecent, 45*60*1000) // attempt to auto submit after 45 mins
+      setTimeout(fetchConfirmedTxs, 45*60*1000) // attempt to auto submit after 45 mins
     } catch (err) {
       if (interactive) {
         Alert(err.toString(), 'Transaction Sending Error')
@@ -998,7 +1008,7 @@ function App () {
       // only send when there's at least a number of bounty outputs
       console.warn('auto mining: too few bounty outputs', tx)
       // try again after half an interval, if the interval > 5 min
-      setTimeout(fetchUnspent, 5*60*1000)
+      setTimeout(fetchMiningData, 5*60*1000)
       return
     }
     doSend(false)
@@ -1012,7 +1022,7 @@ function App () {
     }
     console.log('start mining')
     setAutoMining(true)
-    fetchUnspent()  // trigger the first fetchPending
+    fetchMiningData()  // trigger the first fetchPending
   }
 
   return (
@@ -1043,7 +1053,7 @@ function App () {
       }</div>
       <div className="spacing flex-container">
         <div>Confirmed Transactions</div>
-        <div>{listConfirmedTx ? <button onClick={()=>fetchRecent(true)}>Reload</button> : <div className="lds-dual-ring"></div>}</div>
+        <div>{listConfirmedTx ? <button onClick={()=>fetchConfirmedTxs(true)}>Reload</button> : <div className="lds-dual-ring"></div>}</div>
       </div>
       {listConfirmedTx && listConfirmedTx.map(tx => (!mapSubmittedTx.get(tx.hash) &&
         <div className="spacing flex-container indent" key={tx.hash}>
@@ -1065,7 +1075,7 @@ function App () {
       ))}
       <div className="spacing flex-container">
         <div>Pending Transactions</div>
-        <div>{isLoading ? <div className="lds-dual-ring"></div> : <button onClick={()=>fetchUnspent()}>Reload</button>}</div>
+        <div>{isLoading ? <div className="lds-dual-ring"></div> : <button onClick={()=>fetchMiningData()}>Reload</button>}</div>
       </div>
       {(mapSentTx && mapSentTx.size > 0) &&
         Array.from(mapSentTx.values()).map(tx => ((!listConfirmedTx || !listConfirmedTx.some(t => t.hash == tx.hash)) &&
@@ -1125,7 +1135,7 @@ function App () {
             }}
           />
         </div>
-        <div>{isLoading ? <div className="lds-dual-ring"></div> : <button onClick={()=>fetchUnspent()}>Rebuild</button>}</div>
+        <div>{isLoading ? <div className="lds-dual-ring"></div> : <button onClick={()=>fetchMiningData()}>Reload</button>}</div>
         {(utxos && utxos.length && (!btx || !btx.signed)) && <div>
           {(!btxError&&!btxDisplay) && <div className="lds-dual-ring"></div>}
           {!!btxDisplay && <button onClick={() => doSend()}>Send</button>}
