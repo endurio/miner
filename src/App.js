@@ -1031,7 +1031,8 @@ function App () {
         <span>&nbsp;{Array.from(apiKeys.values()).some(value => !value) ? '❌' : '✅'}<button onClick={() => promptForConfig(!!privateKey)}>API Keys</button></span>
         <span>&nbsp;{privateKey ? '✅' : '❌'}<button onClick={() => promptForPrivateKey(!!privateKey)}>Private Key</button></span>
       </div>
-      <div className="spacing flex-container">
+
+      <div className="spacing flex-container section">
         <div className="flex-container">
           Network:&nbsp;<Dropdown options={networks} onChange={item=>setNetwork(item.value)} value={network} placeholder="Network" />
         </div>
@@ -1040,7 +1041,8 @@ function App () {
       {isNaN(minerBalance) && <div className="spacing flex-container indent"><div className="lds-dual-ring"></div></div>}
       {minerBalance && <div className="spacing flex-container indent"><span>{decShift(minerBalance, -18)} <a target='blank' href={`https://${network.toLowerCase()}.etherscan.io/address/${miner}`}>ETH</a></span></div>}
       {tokenBalance && <div className="spacing flex-container indent"><span>{decShift(tokenBalance, -18)} <a target='blank' href={`https://${network.toLowerCase()}.etherscan.io/token/${CONTRACT_ADDRESS[network]}?a=${miner}`}>END</a></span></div>}
-      <div className="spacing flex-container">
+
+      <div className="spacing flex-container section">
         <div className="flex-container">
           Coin:&nbsp;<Dropdown options={coinTypes} onChange={item=>setCoinType(item.value)} value={coinType} placeholder="Mining coin" />
         </div>
@@ -1051,7 +1053,8 @@ function App () {
           <div className="lds-dual-ring"></div> :
           <span>{decShift(senderBalance, -8)} {coinType}</span>
       }</div>
-      <div className="spacing flex-container">
+
+      <div className="spacing flex-container section">
         <div>Confirmed Transactions</div>
         <div>{listConfirmedTx ? <button onClick={()=>fetchConfirmedTxs(true)}>Reload</button> : <div className="lds-dual-ring"></div>}</div>
       </div>
@@ -1073,7 +1076,8 @@ function App () {
           }</div>}
         </div>
       ))}
-      <div className="spacing flex-container">
+
+      <div className="spacing flex-container section">
         <div>Pending Transactions</div>
         <div>{isLoading ? <div className="lds-dual-ring"></div> : <button onClick={()=>fetchMiningData()}>Reload</button>}</div>
       </div>
@@ -1085,7 +1089,8 @@ function App () {
           </div>
         ))
       }
-      <div className='spacing flex-container'>
+
+      <div className='spacing flex-container section'>
         <div className="flex-container">Min Recipients&nbsp;
           <input type='number' onFocus={handleFocus} maxLength={1} style={{width: 30}}
             value={minAutoBounty} onChange={event=>{
@@ -1145,7 +1150,8 @@ function App () {
         {btxError && <span className="error">{btxError}</span>}
         {btxDisplay && <pre>{btxDisplay}</pre>}
       </div>
-      <div className="spacing flex-container">
+
+      <div className="spacing flex-container section">
         <div>Claimable Reward</div>
         <div>{listClaimableTx ? <button onClick={()=>fetchClaimables(true)}>Reload</button> : <div className="lds-dual-ring"></div>}</div>
         {(listClaimableTx && listClaimableTx.length) ? <div><button onClick={()=>doClaimAll()}>Claim All</button></div> : ''}
@@ -1162,7 +1168,7 @@ function App () {
           }</div>
         </div>
       ))}
-      <div className='spacing flex-container footer'>
+      <div className='spacing flex-container section'>
         <div><a href='/'>Home</a></div>
         <div><a href='/doc'>Documentation</a></div>
         <div><a target='_blank' rel='noreferrer' href='https://opensource.org/licenses/MIT'>License</a></div>

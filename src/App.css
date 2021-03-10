@@ -60,11 +60,7 @@ input {
   margin-right: -5px; /* negate the parent margin */
 }
 
-.header {
-  margin-bottom: 20px;
-}
-
-.footer {
+.section {
   margin-top: 20px;
 }
 
