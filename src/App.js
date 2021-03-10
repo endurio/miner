@@ -1101,9 +1101,9 @@ function App () {
             }}
           />
         </div>
-        {<div>{!!autoMining ?
+        {!!chainHead && <div>{!!autoMining ?
           <button onClick={()=>toggleMining()}>⛔ Stop</button> :
-          <button onClick={()=>toggleMining()}>▶️ Start</button>
+          <button onClick={()=>toggleMining()}>▶️ Start Auto Mining</button>
         }</div>}
         {(autoMining && lastPoll) && <div>{lastPoll.toLocaleTimeString('en-GB')}</div>}
       </div>
@@ -1143,7 +1143,7 @@ function App () {
         <div>{isLoading ? <div className="lds-dual-ring"></div> : <button onClick={()=>fetchMiningData()}>Reload</button>}</div>
         {(utxos && utxos.length && (!btx || !btx.signed)) && <div>
           {(!btxError&&!btxDisplay) && <div className="lds-dual-ring"></div>}
-          {!!btxDisplay && <button onClick={() => doSend()}>Send</button>}
+          {!!btxDisplay && <button onClick={() => doSend()}>Mine</button>}
         </div>}
       </div>
       <div className='spacing flex-container indent'>
