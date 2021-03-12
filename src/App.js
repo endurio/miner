@@ -156,13 +156,13 @@ function App () {
   const [contract, setContract] = React.useState()
   const [tokenBalance, setTokenBalance] = React.useState()
   const [pendingTxs, setPendingTxs] = React.useState()
-  const [mapSentTx, setSentTx] = usePersistentMap('sent')                 // miningTx.hash => miningTx
+  const [mapSentTx, setSentTx] = useMap()                     // miningTx.hash => miningTx
   const [listConfirmedTx, setConfirmedTx] = React.useState()
   const [isSubmitting, setSubmitting] = useMap()
-  const [mapSubmittedTx, setSubmittedTx] = usePersistentMap('submitted')  // miningTx.hash => submitTx.hash
+  const [mapSubmittedTx, setSubmittedTx] = useMap()           // miningTx.hash => submitTx.hash
   const [listClaimableTx, setClaimableTx] = React.useState()
   const [isClaiming, setClaiming] = useMap()
-  const [mapClaimedTx, setClaimedTx] = usePersistentMap('claimed')        // submitTx.hash => claimTx.res
+  const [mapClaimedTx, setClaimedTx] = useMap()               // submitTx.hash => claimTx.res
   const [minAutoBounty, setMinAutoBounty] = usePersistent('minAutoBounty', 3)
   const [autoMining, setAutoMining] = React.useState(false)
   const [lastPoll, setLastPoll] = React.useState()
