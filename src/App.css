@@ -60,6 +60,10 @@ input {
   margin-right: -5px; /* negate the parent margin */
 }
 
+input.noLeftBorder {
+  border-left: none;
+}
+
 .section {
   margin-top: 20px;
 }

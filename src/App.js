@@ -438,7 +438,7 @@ function App () {
       console.log('use the best UTXO found', utxoWithMostRecipient)
       return utxoWithMostRecipient
     }
-  }, [utxos, maxBounty])
+  }, [utxos])
 
   // build btx on new input
   React.useEffect(() => {
@@ -1094,12 +1094,21 @@ function App () {
       }
 
       <div className='spacing flex-container section'>
-        <div className="flex-container">Min Recipients&nbsp;
+        <div className="flex-container">Recipients&nbsp;
           <input type='number' onFocus={handleFocus} maxLength={1} style={{width: 30}}
             value={minAutoBounty} onChange={event=>{
               const value = parseInt(event.target.value)
-              if (value > 0 && value <= 8) {
+              if (value > 0 && value <= maxBounty) {
                 setMinAutoBounty(value)
+              }
+            }}
+          />
+          -&nbsp;
+          <input type='number' onFocus={handleFocus} maxLength={1} style={{width: 30}} className='noLeftBorder'
+            value={maxBounty} onChange={event=>{
+              const value = parseInt(event.target.value)
+              if (value >= minAutoBounty && value <= 8) {
+                setMaxBounty(event.target.value)
               }
             }}
           />
@@ -1119,16 +1128,6 @@ function App () {
                 setXmine(coinType, 1)
               } else {
                 setXmine(coinType, event.target.value)
-              }
-            }}
-          />
-        </div>
-        <div className="flex-container">Max Recipients&nbsp;
-          <input type='number' onFocus={handleFocus} maxLength={1} style={{width: 30}}
-            value={maxBounty} onChange={event=>{
-              const value = parseInt(event.target.value)
-              if (value >= 0 && value <= 8) {
-                setMaxBounty(event.target.value)
               }
             }}
           />
