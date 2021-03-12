@@ -446,6 +446,10 @@ function App () {
       return
     }
 
+    if (btx && btx.signed) {
+      return  // just sent
+    }
+
     const amount = parseInt(bountyAmount.get(coinType))
     if (isNaN(amount)) {
       console.error('invalid fee')
@@ -466,8 +470,7 @@ function App () {
       inputs.push(o)
     })
 
-    const btx = search(amount, amount*4)
-    setBtx(btx)
+    setBtx(search(amount, amount*4))
 
     // binary search
     function search(start, end, last) {
